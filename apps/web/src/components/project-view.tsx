@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/lib/use-project";
 import type { Version } from "@/lib/database.types";
@@ -31,15 +31,14 @@ export function ProjectView({
 
   // Keep the selected version fresh across realtime refetches (e.g. a
   // processing node flipping to ready), and default to the Main version.
-  useEffect(() => {
-    if (selected) {
-      const updated = versions.find((v) => v.id === selected.id);
-      if (updated && updated !== selected) setSelected(updated);
-    } else if (project?.main_version_id) {
-      const main = versions.find((v) => v.id === project.main_version_id);
-      if (main) setSelected(main);
-    }
-  }, [versions, project?.main_version_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Adjust-during-render: the guards make this settle in one extra pass.
+  if (selected) {
+    const updated = versions.find((v) => v.id === selected.id);
+    if (updated && updated !== selected) setSelected(updated);
+  } else if (project?.main_version_id) {
+    const main = versions.find((v) => v.id === project.main_version_id);
+    if (main) setSelected(main);
+  }
 
   async function setMain(v: Version) {
     const supabase = createClient();
