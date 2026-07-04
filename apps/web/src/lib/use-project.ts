@@ -45,6 +45,7 @@ export function useProject(projectId: string): ProjectData {
   }, [supabase, projectId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
     refetch();
 
     const channel = supabase

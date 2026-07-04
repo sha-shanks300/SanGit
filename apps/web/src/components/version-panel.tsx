@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Version } from "@/lib/database.types";
 import { Button, Input, StatusBadge } from "@/components/ui";
@@ -28,10 +28,13 @@ export function VersionPanel({
   const [date, setDate] = useState(version.uploaded_at.slice(0, 10));
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  // Reset the form when a different version is selected (adjust-during-render).
+  const [prevVersionId, setPrevVersionId] = useState(version.id);
+  if (prevVersionId !== version.id) {
+    setPrevVersionId(version.id);
     setName(version.display_name ?? "");
     setDate(version.uploaded_at.slice(0, 10));
-  }, [version.id, version.display_name, version.uploaded_at]);
+  }
 
   async function save() {
     setSaving(true);
