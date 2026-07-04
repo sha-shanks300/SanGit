@@ -7,23 +7,23 @@ import type { Version } from "@/lib/database.types";
 import { TimelineTree } from "@/components/timeline-tree";
 import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
+import { Interactions } from "@/components/interactions";
+import { ShareManager } from "@/components/share-manager";
 import { Eyebrow, Panel, StatusBadge } from "@/components/ui";
 
 /**
  * The project page body: timeline tree panel + detail panel + player bar.
  * Used by both the owner dashboard page and the public project page —
- * `isOwner` gates editing; RLS gates the data underneath either way.
+ * `isOwner` gates editing/sharing; RLS gates the data underneath either way.
  */
 export function ProjectView({
   projectId,
   isOwner,
   headerActions,
-  interactions,
 }: {
   projectId: string;
   isOwner: boolean;
   headerActions?: React.ReactNode;
-  interactions?: (version: Version) => React.ReactNode;
 }) {
   const { project, branches, versions, loading, refetch } =
     useProject(projectId);
@@ -102,8 +102,10 @@ export function ProjectView({
             isOwner={isOwner}
             mainVersionId={project.main_version_id}
             onChanged={refetch}
-          />
-          {interactions?.(selected)}
+          >
+            {isOwner && <ShareManager versionId={selected.id} />}
+          </VersionPanel>
+          <Interactions versionId={selected.id} />
         </div>
       )}
 
