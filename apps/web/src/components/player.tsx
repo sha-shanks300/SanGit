@@ -54,10 +54,16 @@ export function PlayerBar({
     [version, audioUrlFor]
   );
 
-  useEffect(() => {
-    retriedRef.current = false;
+  // Reset transport state when the track changes (adjust-during-render).
+  const [prevVersionId, setPrevVersionId] = useState(version?.id ?? null);
+  if (prevVersionId !== (version?.id ?? null)) {
+    setPrevVersionId(version?.id ?? null);
     setTime(0);
     setDuration(version?.duration_secs ?? 0);
+  }
+
+  useEffect(() => {
+    retriedRef.current = false;
     if (version) loadAndPlay(true);
     else if (audioRef.current) {
       audioRef.current.pause();

@@ -28,8 +28,15 @@ export function ShareManager({ versionId }: { versionId: string }) {
     setLinks(data ?? []);
   }, [versionId]);
 
-  useEffect(() => {
+  // Clear the one-time URL display when switching versions (adjust-during-render).
+  const [prevVersionId, setPrevVersionId] = useState(versionId);
+  if (prevVersionId !== versionId) {
+    setPrevVersionId(versionId);
     setFreshUrl(null);
+  }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
     refetch();
   }, [refetch]);
 

@@ -31,6 +31,7 @@ export default function DevicesPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
     refresh();
   }, [refresh]);
 
