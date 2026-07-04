@@ -1,0 +1,13 @@
+# Python (service/)
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.spec.bak
+
+# local env/config
+.env
+.env.local
+*.local.json
