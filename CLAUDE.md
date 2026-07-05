@@ -28,6 +28,9 @@ Python service (run from `service/`, once it exists): `python main.py`. No test 
 
 - **Next.js 16.2.10 has breaking changes vs. older App Router knowledge.** Read `apps/web/node_modules/next/dist/docs/` before writing Next.js code (see `apps/web/AGENTS.md`). Known: route-handler/page `params` is a `Promise` (must `await`), and `middleware.ts` is deprecated — the file convention is `proxy.ts` exporting `proxy()`.
 - **Tailwind CSS v4** — no `tailwind.config.js`; theme tokens are defined in CSS via `@theme` in `apps/web/src/app/globals.css`.
+- **Hand-written Supabase types** (`src/lib/database.types.ts`): rows must be `type` aliases (interfaces fail the `Record<string, unknown>` constraint and every result becomes `never`); empty Views/Functions must be `{ [_ in never]: never }` (not `Record<string, never>`); embedded aggregates need `.returns<T>()`.
+- **PGRST201 trap**: `projects`↔`versions` has two FKs (`versions.project_id` and `projects.main_version_id`), so any embed must be disambiguated: `versions!versions_project_id_fkey(count)`. Plain `versions(count)` errors at runtime and typically surfaces as a silently-empty page.
+- The strict `react-hooks/set-state-in-effect` lint rule is enforced: use the adjust-during-render pattern for prop-driven state resets; async fetch-in-effect calls carry a targeted `eslint-disable-next-line` with justification.
 
 ## Architecture decisions that constrain code
 
@@ -36,6 +39,17 @@ Python service (run from `service/`, once it exists): `python main.py`. No test 
 - **All audio playback uses short-lived signed URLs** minted server-side from private buckets (`flp-files`, `audio`) — never public storage URLs. This is what makes private share links (`share_links` table: expiring, revocable, view-logged) enforceable. Private-link access bypasses RLS via `GET /api/listen/[token]`.
 - **Render status lifecycle**: versions are created with `render_status='pending'` (`.flp` only); the local service later uploads the mp3 and flips it to `ready`/`failed`. UI must handle all states.
 - **RLS everywhere**: every table is scoped by `user_id`; owner has full CRUD, public read only on `is_public` projects. Web CRUD goes through supabase-js + RLS directly; route handlers exist only where server logic is required (ingest, pairing, share-link minting, Set-as-Main).
+- **Device lifecycle**: the service validates its token against `GET /api/ingest/ping` at startup and on 401s from any ingest call it parks queued work (`store.defer_*`, no attempts burned), notifies, and reopens the settings dialog (`pairing.run_setup`; blank code keeps the current pairing). Tray has a "Settings…" item; `python main.py --setup` forces the dialog. Re-pairing hot-swaps the token and restarts the watcher.
+
+## Version graph view (implementation plan)
+
+The project page has two visualizations of the same `useProject` data, toggled by a pill tab in `project-view.tsx` (persisted to localStorage, default "Tree"):
+
+1. **Tree** — the existing deterministic SVG in `components/timeline-tree.tsx` (lanes per branch).
+2. **Graph** — Obsidian-style interactive physics view in `components/version-graph.tsx` using **`react-force-graph-2d`** with `dagMode="lr"`. Chosen over React Flow + dagre because `dagMode` re-applies the DAG constraint every simulation tick, so dragged nodes are continuously pulled back and a descendant can never settle upstream of its ancestor — no custom physics math. Constraint is enforced by **topological depth, not timestamp** (cross-branch wall-clock order is not guaranteed; within any ancestry chain it is). If global time ordering is ever needed, replace `dagMode` with a `d3.forceX` targeting `uploaded_at`.
+   - Data adapter: `lib/graph-data.ts` builds nodes (one per version) + links (chain edges within a branch, fork edge from the last parent-branch version saved before the child branch's first version — same anchor rule as the SVG tree).
+   - Canvas nodes are painted via `nodeCanvasObject` with colors read from the CSS variables at runtime (canvas can't use Tailwind); tooltip is a Tailwind-styled absolutely-positioned div driven by `onNodeHover`. Must be loaded with `next/dynamic` + `ssr: false`; release `fx/fy` in `onNodeDragEnd` so physics resumes after a drag.
+   - `/dev/graph` is a dev-only preview page (404s in production) that renders the graph with mock data for visual work without auth.
 
 ## Design system
 
