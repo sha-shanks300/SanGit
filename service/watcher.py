@@ -76,9 +76,13 @@ class FolderWatcher:
         self._observer = Observer()
         self._folders = folders
         self.paused = False
+        self.started = False
         self._last_popup_at: dict[str, float] = {}
 
     def start(self):
+        if self.started:
+            return
+        self.started = True
         scheduled = 0
         for folder in self._folders:
             p = Path(folder)
@@ -91,5 +95,7 @@ class FolderWatcher:
         log.info("watching %d folder(s)", scheduled)
 
     def stop(self):
+        if not self.started:
+            return
         self._observer.stop()
         self._observer.join(timeout=5)

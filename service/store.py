@@ -138,6 +138,27 @@ def render_retry(render_id: int, error: str, max_attempts: int = 3) -> bool:
         return False
 
 
+def defer_commit(commit_id: int, delay_secs: float = 60) -> None:
+    """Push a commit back without burning a retry attempt (e.g. revoked token)."""
+    with _conn() as c:
+        c.execute("update commits set next_attempt_at=? where id=?",
+                  (time.time() + delay_secs, commit_id))
+
+
+def defer_render(render_id: int, delay_secs: float = 60) -> None:
+    """Requeue a render without burning an attempt (e.g. revoked token)."""
+    with _conn() as c:
+        c.execute("update renders set status='pending', next_attempt_at=? where id=?",
+                  (time.time() + delay_secs, render_id))
+
+
+def requeue_errored_commits() -> None:
+    """After re-pairing, give commits that errored out another life."""
+    with _conn() as c:
+        c.execute("update commits set status='pending', attempts=0,"
+                  " next_attempt_at=0, error=null where status='error'")
+
+
 def counts() -> dict:
     with _conn() as c:
         out = {}

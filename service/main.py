@@ -14,8 +14,9 @@ from PIL import Image, ImageDraw
 
 import committer
 import config
+import pairing
 import store
-from api_client import ApiClient
+from api_client import ApiClient, ApiError
 from popup import PopupManager
 from render_queue import RenderWorker
 from uploader import UploadWorker
@@ -52,14 +53,16 @@ class App:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.client = ApiClient(cfg["api_url"], cfg["device_token"])
-        self.uploader = UploadWorker(self.client)
-        self.renderer = RenderWorker(self.client, cfg)
+        self.uploader = UploadWorker(self.client, on_auth_error=self._on_auth_error)
+        self.renderer = RenderWorker(self.client, cfg, on_auth_error=self._on_auth_error)
         self.popups = PopupManager(self._do_commit,
                                    timeout_secs=cfg["popup_timeout_secs"])
         self.watcher = FolderWatcher(cfg["watch_folders"], self._on_save,
                                      debounce_secs=cfg["debounce_secs"])
         self.watching = True
         self.icon: pystray.Icon | None = None
+        self._settings_lock = threading.Lock()
+        self._auth_alerted = False
 
     # watcher thread -> popup queue
     def _on_save(self, flp_path: str):
@@ -69,6 +72,60 @@ class App:
     # popup thread -> commit pipeline
     def _do_commit(self, flp_path: str, display_name: str | None):
         committer.commit(flp_path, display_name)
+
+    # ---- reconfiguration ----
+    def _apply_config(self, cfg: dict):
+        """Hot-apply new settings: swap token/URL and restart the watcher."""
+        self.cfg = cfg
+        self.client.api_url = cfg["api_url"].rstrip("/")
+        self.client.device_token = cfg["device_token"]
+        was_started = self.watcher.started
+        self.watcher.stop()
+        self.watcher = FolderWatcher(cfg["watch_folders"], self._on_save,
+                                     debounce_secs=cfg["debounce_secs"])
+        if was_started:
+            self.watcher.start()  # otherwise run() starts it
+        store.requeue_errored_commits()
+        self._auth_alerted = False
+        log.info("settings applied; watching %s", cfg["watch_folders"])
+
+    def open_settings(self, icon=None, item=None):
+        """Tray 'Settings…' — change folder, URL, FL path, or re-pair."""
+        if not self._settings_lock.acquire(blocking=False):
+            return  # dialog already open
+        try:
+            cfg = config.load()
+            if pairing.run_setup(cfg):
+                self._apply_config(config.load())
+        except Exception:
+            log.exception("settings dialog failed")
+        finally:
+            self._settings_lock.release()
+
+    def _on_auth_error(self):
+        """Worker got a 401: the device was revoked on the web app."""
+        if self._auth_alerted:
+            return
+        self._auth_alerted = True
+        log.error("device token rejected — it was likely revoked; re-pair via Settings")
+        if self.icon:
+            try:
+                self.icon.notify(
+                    "This device was revoked. Open Settings to re-pair.", "SanGit")
+            except Exception:
+                pass
+        threading.Thread(target=self.open_settings, daemon=True).start()
+
+    def validate_token(self) -> bool:
+        """Startup check; returns False only when the server says 401."""
+        try:
+            self.client.ping()
+            return True
+        except ApiError as e:
+            if e.status == 401:
+                return False
+            log.warning("token check inconclusive (%s) — continuing offline", e)
+            return True
 
     # ---- tray menu actions ----
     def _toggle_watch(self, icon, item):
@@ -110,6 +167,7 @@ class App:
             ),
             pystray.MenuItem("Render queue now", self._render_now),
             pystray.MenuItem("Open dashboard", self._open_dashboard),
+            pystray.MenuItem("Settings…", self.open_settings),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit SanGit", self._quit),
         )
@@ -123,14 +181,28 @@ def main():
     store.init()
     cfg = config.load()
 
-    if not config.is_paired(cfg) or not cfg.get("watch_folders"):
-        import pairing
-        if not pairing.run_setup(cfg):
+    # `python main.py --setup` forces the settings window even when paired
+    # (change watch folder, re-pair after revoking, fix the URL, ...).
+    force_setup = "--setup" in sys.argv
+
+    if force_setup or not config.is_paired(cfg) or not cfg.get("watch_folders"):
+        if not pairing.run_setup(cfg) and not config.is_paired(cfg):
             log.info("setup cancelled")
             return
         cfg = config.load()
 
-    App(cfg).run()
+    app = App(cfg)
+
+    # If the device was revoked on the web app while we were offline, ask to
+    # re-pair before starting the watchers.
+    if not app.validate_token():
+        log.warning("device token revoked — opening settings")
+        if not pairing.run_setup(config.load()):
+            log.info("re-pairing cancelled; uploads will stay queued")
+        else:
+            app._apply_config(config.load())
+
+    app.run()
 
 
 if __name__ == "__main__":
