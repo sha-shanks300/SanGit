@@ -14,9 +14,11 @@ log = logging.getLogger("sangit.uploader")
 
 
 class UploadWorker:
-    def __init__(self, client: ApiClient, poll_secs: float = 3.0):
+    def __init__(self, client: ApiClient, poll_secs: float = 3.0,
+                 on_auth_error=None):
         self._client = client
         self._poll = poll_secs
+        self._on_auth_error = on_auth_error
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -34,7 +36,14 @@ class UploadWorker:
             try:
                 self._process(row)
             except ApiError as e:
-                if e.retryable:
+                if e.status == 401:
+                    # Device revoked (or token invalid): park the job intact
+                    # and let the app prompt for re-pairing.
+                    log.warning("commit #%s: device token rejected — waiting for re-pair", row["id"])
+                    store.defer_commit(row["id"], 60)
+                    if self._on_auth_error:
+                        self._on_auth_error()
+                elif e.retryable:
                     log.warning("commit #%s retrying: %s", row["id"], e)
                     store.commit_retry(row["id"], str(e))
                 else:
