@@ -105,6 +105,34 @@ export function VersionGraph({
     [branches, versions, mainVersionId]
   );
 
+  // Direct DAG neighbors per node — the horizontal drag corridor.
+  const neighbors = useMemo(() => {
+    const parents = new Map<string, string[]>();
+    const children = new Map<string, string[]>();
+    for (const l of graphData.links) {
+      (children.get(l.source) ?? children.set(l.source, []).get(l.source)!).push(l.target);
+      (parents.get(l.target) ?? parents.set(l.target, []).get(l.target)!).push(l.source);
+    }
+    const byId = new Map(graphData.nodes.map((n) => [n.id, n as SimNode]));
+    return { parents, children, byId };
+  }, [graphData]);
+
+  /** x-range a node may occupy without crossing its prev/next versions. */
+  function dragBounds(id: string): [number, number] {
+    const GAP = 24;
+    let min = -Infinity;
+    let max = Infinity;
+    for (const pid of neighbors.parents.get(id) ?? []) {
+      const p = neighbors.byId.get(pid);
+      if (p?.x != null) min = Math.max(min, p.x + GAP);
+    }
+    for (const cid of neighbors.children.get(id) ?? []) {
+      const c = neighbors.byId.get(cid);
+      if (c?.x != null) max = Math.min(max, c.x - GAP);
+    }
+    return min <= max ? [min, max] : [min, min]; // degenerate: sit at the floor
+  }
+
   return (
     <div ref={wrapRef} className="relative">
       {width > 0 && tokens && (
@@ -117,11 +145,26 @@ export function VersionGraph({
           dagLevelDistance={64}
           cooldownTime={5000}
           enableNodeDrag
-          onNodeDragEnd={(node) => {
-            // Release the pin so the DAG forces pull it back into order.
+          onNodeDrag={(node) => {
+            // Live-clamp x to the corridor between prev/next versions;
+            // y stays free.
             const n = node as SimNode;
-            n.fx = undefined;
-            n.fy = undefined;
+            if (n.x == null) return;
+            const [min, max] = dragBounds(n.id);
+            const clamped = Math.min(Math.max(n.x, min), max);
+            if (clamped !== n.x) {
+              n.x = clamped;
+              n.fx = clamped;
+            }
+          }}
+          onNodeDragEnd={(node) => {
+            // Pin where dropped (so the node stays put), but never outside
+            // the chronological corridor.
+            const n = node as SimNode;
+            if (n.x == null || n.y == null) return;
+            const [min, max] = dragBounds(n.id);
+            n.fx = Math.min(Math.max(n.x, min), max);
+            n.fy = n.y;
           }}
           onNodeClick={(node) => onSelect((node as SimNode).version)}
           onNodeHover={(node) => {
