@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/lib/use-project";
 import type { Version } from "@/lib/database.types";
 import { TimelineTree } from "@/components/timeline-tree";
+import { VersionGraph } from "@/components/version-graph";
+import { cn } from "@/lib/utils";
 import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
 import { Interactions } from "@/components/interactions";
@@ -28,6 +30,18 @@ export function ProjectView({
   const { project, branches, versions, loading, refetch } =
     useProject(projectId);
   const [selected, setSelected] = useState<Version | null>(null);
+  const [view, setView] = useState<"tree" | "graph">("tree");
+
+  useEffect(() => {
+    if (localStorage.getItem("sangit-timeline-view") === "graph")
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is unavailable during SSR; restore preference post-mount
+      setView("graph");
+  }, []);
+
+  function switchView(next: "tree" | "graph") {
+    setView(next);
+    localStorage.setItem("sangit-timeline-view", next);
+  }
 
   // Keep the selected version fresh across realtime refetches (e.g. a
   // processing node flipping to ready), and default to the Main version.
@@ -84,14 +98,44 @@ export function ProjectView({
       </div>
 
       <Panel className="mt-8 overflow-hidden">
-        <Eyebrow className="mb-6">Timeline</Eyebrow>
-        <TimelineTree
-          branches={branches}
-          versions={versions}
-          mainVersionId={project.main_version_id}
-          selectedId={selected?.id ?? null}
-          onSelect={setSelected}
-        />
+        <div className="mb-6 flex items-center justify-between">
+          <Eyebrow>Timeline</Eyebrow>
+          <div className="flex gap-1" role="tablist" aria-label="Timeline view">
+            {(["tree", "graph"] as const).map((mode) => (
+              <button
+                key={mode}
+                role="tab"
+                aria-selected={view === mode}
+                onClick={() => switchView(mode)}
+                className={cn(
+                  "rounded-full px-3.5 py-1.5 text-button capitalize transition-colors",
+                  view === mode
+                    ? "bg-surface-2 text-ink"
+                    : "text-ink-subtle hover:text-ink"
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
+        {view === "graph" ? (
+          <VersionGraph
+            branches={branches}
+            versions={versions}
+            mainVersionId={project.main_version_id}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelected}
+          />
+        ) : (
+          <TimelineTree
+            branches={branches}
+            versions={versions}
+            mainVersionId={project.main_version_id}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelected}
+          />
+        )}
       </Panel>
 
       {selected && (
