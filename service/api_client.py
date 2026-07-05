@@ -34,6 +34,22 @@ class ApiClient:
                            retryable=resp.status_code >= 500)
         return resp.json()
 
+    def ping(self) -> dict:
+        """Raises ApiError(status=401) when the device has been revoked."""
+        try:
+            resp = requests.get(
+                f"{self.api_url}/api/ingest/ping",
+                headers={"Authorization": f"Bearer {self.device_token}"},
+                timeout=10,
+            )
+        except requests.RequestException as e:
+            raise ApiError(f"network error: {e}") from e
+        if resp.status_code >= 400:
+            raise ApiError(f"ping failed: {resp.status_code}",
+                           status=resp.status_code,
+                           retryable=resp.status_code >= 500)
+        return resp.json()
+
     def pair(self, code: str, device_name: str) -> dict:
         return self._post("/api/devices/pair",
                           {"code": code, "device_name": device_name}, authed=False)

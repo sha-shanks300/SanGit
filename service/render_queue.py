@@ -40,10 +40,12 @@ def mp3_duration(path: Path) -> float | None:
 
 
 class RenderWorker:
-    def __init__(self, client: ApiClient, cfg: dict, poll_secs: float = 10.0):
+    def __init__(self, client: ApiClient, cfg: dict, poll_secs: float = 10.0,
+                 on_auth_error=None):
         self._client = client
         self._cfg = cfg
         self._poll = poll_secs
+        self._on_auth_error = on_auth_error
         self._stop = threading.Event()
         self._force = threading.Event()  # tray "Render now" sets this
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -110,8 +112,15 @@ class RenderWorker:
             snapshot.unlink(missing_ok=True)
             mp3_path.unlink(missing_ok=True)
         except ApiError as e:
-            log.warning("render upload for %s failed: %s", version_id, e)
-            self._retry(row, str(e), report=e.retryable is False)
+            if e.status == 401:
+                # Device revoked: park the finished render, don't burn attempts.
+                log.warning("render for %s: device token rejected — waiting for re-pair", version_id)
+                store.defer_render(row["id"], 60)
+                if self._on_auth_error:
+                    self._on_auth_error()
+            else:
+                log.warning("render upload for %s failed: %s", version_id, e)
+                self._retry(row, str(e), report=e.retryable is False)
         except Exception as e:
             log.exception("render for %s unexpected error", version_id)
             self._retry(row, str(e))

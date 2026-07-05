@@ -6,6 +6,17 @@ import { NextResponse, type NextRequest } from "next/server";
  * /settings. (Next 16: proxy.ts is the successor of middleware.ts.)
  */
 export async function proxy(request: NextRequest) {
+  // Safety net: if Supabase's redirect allow-list drops the emailed link on
+  // the site root (Site URL fallback), route the auth code to the callback.
+  if (
+    request.nextUrl.pathname === "/" &&
+    request.nextUrl.searchParams.has("code")
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    return NextResponse.redirect(url);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
