@@ -1,21 +1,28 @@
-"""SanGit local service — tray entrypoint.
+"""SanGit local service — tray entrypoint (PySide6).
 
-Wires together: folder watcher (save detection) -> commit popup -> snapshot/
+Wires together: folder watcher (save detection) -> commit toast -> snapshot/
 upload pipeline -> render queue. Run with `python main.py`.
+
+One Qt event loop on the main thread owns all UI (tray icon, menu, toasts,
+settings dialog). Worker threads (watchdog, uploader, renderer) talk to the
+UI only through Qt signals, which are thread-safe by design.
 """
 
+import ctypes
+import ctypes.wintypes
 import logging
 import sys
-import threading
 import webbrowser
 
-import pystray
-from PIL import Image, ImageDraw
+from PySide6.QtCore import QMetaObject, Qt, Signal, QObject
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 import committer
 import config
 import pairing
 import store
+import theme
 from api_client import ApiClient, ApiError
 from popup import PopupManager
 from render_queue import RenderWorker
@@ -37,21 +44,32 @@ def _setup_logging():
     )
 
 
-def _tray_icon_image() -> Image.Image:
-    """Three lavender nodes + fork lines on transparent bg."""
-    img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    lavender = (94, 106, 210, 255)
-    d.line([(18, 32), (44, 14)], fill=lavender, width=5)
-    d.line([(18, 32), (44, 50)], fill=lavender, width=5)
-    for cx, cy in ((14, 32), (48, 12), (48, 52)):
-        d.ellipse([cx - 9, cy - 9, cx + 9, cy + 9], fill=lavender)
-    return img
+def _already_running() -> bool:
+    """Single-instance guard via a named mutex. A second copy means two
+    tray icons, two commit popups per save and double uploads — refuse."""
+    ctypes.windll.kernel32.CreateMutexW(None, False, "SanGit.Service.Mutex")
+    return ctypes.windll.kernel32.GetLastError() == 183  # ERROR_ALREADY_EXISTS
 
 
-class App:
-    def __init__(self, cfg: dict):
+def _set_app_identity():
+    """Give the process its own taskbar identity so windows show the
+    SanGit mark instead of grouping under python.exe's icon."""
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "SanGit.Service")
+    except Exception:
+        pass
+
+
+class App(QObject):
+    # emitted from worker threads; slots run on the Qt main thread
+    save_detected = Signal(str)
+    auth_error = Signal()
+
+    def __init__(self, cfg: dict, qapp: QApplication):
+        super().__init__()
         self.cfg = cfg
+        self.qapp = qapp
         self.client = ApiClient(cfg["api_url"], cfg["device_token"])
         self.uploader = UploadWorker(self.client, on_auth_error=self._on_auth_error)
         self.renderer = RenderWorker(self.client, cfg, on_auth_error=self._on_auth_error)
@@ -60,16 +78,19 @@ class App:
         self.watcher = FolderWatcher(cfg["watch_folders"], self._on_save,
                                      debounce_secs=cfg["debounce_secs"])
         self.watching = True
-        self.icon: pystray.Icon | None = None
-        self._settings_lock = threading.Lock()
+        self.tray: QSystemTrayIcon | None = None
+        self._settings_open = False
         self._auth_alerted = False
 
-    # watcher thread -> popup queue
+        self.save_detected.connect(self.popups.ask)
+        self.auth_error.connect(self._handle_auth_error)
+
+    # watcher thread -> Qt main thread via signal
     def _on_save(self, flp_path: str):
         if self.watching:
-            self.popups.ask(flp_path)
+            self.save_detected.emit(flp_path)
 
-    # popup thread -> commit pipeline
+    # toast (main thread) hands off to a worker thread inside PopupManager
     def _do_commit(self, flp_path: str, display_name: str | None):
         committer.commit(flp_path, display_name)
 
@@ -89,10 +110,11 @@ class App:
         self._auth_alerted = False
         log.info("settings applied; watching %s", cfg["watch_folders"])
 
-    def open_settings(self, icon=None, item=None):
+    def open_settings(self):
         """Tray 'Settings…' — change folder, URL, FL path, or re-pair."""
-        if not self._settings_lock.acquire(blocking=False):
-            return  # dialog already open
+        if self._settings_open:
+            return
+        self._settings_open = True
         try:
             cfg = config.load()
             if pairing.run_setup(cfg):
@@ -100,21 +122,23 @@ class App:
         except Exception:
             log.exception("settings dialog failed")
         finally:
-            self._settings_lock.release()
+            self._settings_open = False
 
+    # worker thread -> signal -> main thread
     def _on_auth_error(self):
-        """Worker got a 401: the device was revoked on the web app."""
         if self._auth_alerted:
             return
         self._auth_alerted = True
+        self.auth_error.emit()
+
+    def _handle_auth_error(self):
+        """Worker got a 401: the device was revoked on the web app."""
         log.error("device token rejected — it was likely revoked; re-pair via Settings")
-        if self.icon:
-            try:
-                self.icon.notify(
-                    "This device was revoked. Open Settings to re-pair.", "SanGit")
-            except Exception:
-                pass
-        threading.Thread(target=self.open_settings, daemon=True).start()
+        if self.tray:
+            self.tray.showMessage(
+                "SanGit", "This device was revoked. Open Settings to re-pair.",
+                QSystemTrayIcon.MessageIcon.Warning)
+        self.open_settings()
 
     def validate_token(self) -> bool:
         """Startup check; returns False only when the server says 401."""
@@ -127,17 +151,8 @@ class App:
             log.warning("token check inconclusive (%s) — continuing offline", e)
             return True
 
-    # ---- tray menu actions ----
-    def _toggle_watch(self, icon, item):
-        self.watching = not self.watching
-
-    def _render_now(self, icon, item):
-        self.renderer.render_now()
-
-    def _open_dashboard(self, icon, item):
-        webbrowser.open(f"{self.cfg['api_url']}/dashboard")
-
-    def _status_text(self, item) -> str:
+    # ---- tray ----
+    def _status_text(self) -> str:
         c = store.counts()
         pending_up = c.get("commits", {}).get("pending", 0)
         pending_rn = c.get("renders", {}).get("pending", 0)
@@ -146,39 +161,86 @@ class App:
             return f"Rendering {current}…"
         return f"{pending_up} upload(s), {pending_rn} render(s) queued"
 
-    def _quit(self, icon, item):
-        self.watcher.stop()
-        self.uploader.stop()
-        self.renderer.stop()
-        icon.stop()
+    def _build_tray(self):
+        menu = QMenu()
+        menu.setFont(theme.font("body", 9))
+
+        self._status_action = QAction("", menu)
+        self._status_action.setEnabled(False)
+        menu.addAction(self._status_action)
+        menu.aboutToShow.connect(
+            lambda: self._status_action.setText(self._status_text()))
+        menu.addSeparator()
+
+        watch = QAction("Watching for saves", menu)
+        watch.setCheckable(True)
+        watch.setChecked(True)
+        watch.toggled.connect(lambda on: setattr(self, "watching", on))
+        menu.addAction(watch)
+
+        menu.addAction("Render queue now",
+                       lambda: self.renderer.render_now())
+        menu.addAction("Open dashboard",
+                       lambda: webbrowser.open(f"{self.cfg['api_url']}/dashboard"))
+        menu.addAction("Settings…", self.open_settings)
+        menu.addSeparator()
+        menu.addAction("Quit SanGit", self.qapp.quit)
+
+        self.tray = QSystemTrayIcon(theme.app_icon())
+        self.tray.setToolTip("SanGit")
+        self.tray.setContextMenu(menu)
+        self._menu = menu  # keep alive
+        self.tray.show()
+
+    def _install_ctrl_handler(self):
+        """Make Ctrl+C (and closing the terminal) stop the service: a
+        native console handler runs on its own thread and queues a quit
+        into the Qt loop."""
+        if sys.platform != "win32":
+            return
+        routine = ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL,
+                                     ctypes.wintypes.DWORD)
+
+        def handler(event):
+            if event in (0, 1, 2):  # CTRL_C, CTRL_BREAK, CTRL_CLOSE
+                log.info("console interrupt — shutting down")
+                QMetaObject.invokeMethod(self.qapp, "quit",
+                                         Qt.ConnectionType.QueuedConnection)
+                return True
+            return False
+
+        self._ctrl_handler = routine(handler)  # keep a ref: GC would unhook it
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(self._ctrl_handler, True)
 
     def run(self):
         self.uploader.start()
         self.renderer.start()
         self.watcher.start()
-
-        menu = pystray.Menu(
-            pystray.MenuItem(self._status_text, None, enabled=False),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "Watching for saves",
-                self._toggle_watch,
-                checked=lambda item: self.watching,
-            ),
-            pystray.MenuItem("Render queue now", self._render_now),
-            pystray.MenuItem("Open dashboard", self._open_dashboard),
-            pystray.MenuItem("Settings…", self.open_settings),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quit SanGit", self._quit),
-        )
-        self.icon = pystray.Icon("SanGit", _tray_icon_image(), "SanGit", menu)
-        log.info("service running; watching %s", self.cfg["watch_folders"])
-        self.icon.run()  # blocks the main thread
+        self._build_tray()
+        self._install_ctrl_handler()
+        log.info("service running; watching %s (Ctrl+C or tray menu to quit)",
+                 self.cfg["watch_folders"])
+        self.qapp.exec()  # blocks until quit (tray menu or Ctrl+C)
+        self.watcher.stop()
+        self.uploader.stop()
+        self.renderer.stop()
+        log.info("service stopped")
 
 
 def main():
+    _set_app_identity()
     _setup_logging()
+    if _already_running():
+        log.error("SanGit service is already running (check the tray, next "
+                  "to the clock) — not starting a second copy.")
+        return
     store.init()
+
+    qapp = QApplication(sys.argv)
+    qapp.setQuitOnLastWindowClosed(False)  # tray app: dialogs close, we stay
+    qapp.setWindowIcon(theme.app_icon())
+    qapp.setStyleSheet(theme.qss())
+
     cfg = config.load()
 
     # `python main.py --setup` forces the settings window even when paired
@@ -191,7 +253,7 @@ def main():
             return
         cfg = config.load()
 
-    app = App(cfg)
+    app = App(cfg, qapp)
 
     # If the device was revoked on the web app while we were offline, ask to
     # re-pair before starting the watchers.

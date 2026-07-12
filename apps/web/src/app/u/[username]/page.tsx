@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TopNav } from "@/components/top-nav";
-import { Card, Eyebrow } from "@/components/ui";
-import { formatDate } from "@/lib/utils";
+import { Eyebrow } from "@/components/ui";
+import { ProfileHeader } from "@/components/profile-header";
+import { ProjectRow, type ProjectRowData } from "@/components/project-row";
 
 export default async function ProfilePage({
   params,
@@ -20,48 +20,58 @@ export default async function ProfilePage({
     .maybeSingle();
   if (!profile) notFound();
 
-  const { data: projects } = await supabase
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // NB: versions embed disambiguated — projects↔versions has a second FK via
+  // main_version_id (PGRST201).
+  // Most recent commit first (updated_at also moves on settings saves).
+  const { data } = await supabase
     .from("projects")
-    .select("*")
+    .select(
+      "*, versions!versions_project_id_fkey(count), branches(count), latest:versions!versions_project_id_fkey(uploaded_at)"
+    )
     .eq("user_id", profile.id)
     .eq("is_public", true)
-    .order("updated_at", { ascending: false });
+    .order("uploaded_at", { referencedTable: "latest", ascending: false })
+    .limit(1, { referencedTable: "latest" })
+    .returns<ProjectRowData[]>();
+  const projects = (data ?? []).sort(
+    (a, b) =>
+      +new Date(b.latest?.[0]?.uploaded_at ?? b.created_at) -
+      +new Date(a.latest?.[0]?.uploaded_at ?? a.created_at)
+  );
 
   return (
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10">
-        <Eyebrow>Producer</Eyebrow>
-        <h1 className="mt-1 text-display-md font-semibold tracking-tight text-ink">
-          {profile.display_name || profile.username}
-        </h1>
-        {profile.bio && (
-          <p className="mt-2 max-w-xl text-body text-ink-subtle">{profile.bio}</p>
-        )}
+        <ProfileHeader
+          profile={profile}
+          isOwner={user?.id === profile.id}
+          onPublicPage
+        />
 
-        <h2 className="mt-12 text-card-title font-medium text-ink">
-          Public projects
-        </h2>
-        {!projects || projects.length === 0 ? (
-          <p className="mt-4 text-body-sm text-ink-subtle">
-            Nothing public yet.
-          </p>
-        ) : (
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((p) => (
-              <Link key={p.id} href={`/p/${p.slug}`}>
-                <Card className="h-full transition-colors hover:border-hairline-strong hover:bg-surface-2">
-                  <h3 className="text-card-title font-medium text-ink">
-                    {p.title}
-                  </h3>
-                  <p className="mt-2 text-caption text-ink-tertiary">
-                    Updated {formatDate(p.updated_at)}
-                  </p>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        )}
+        <div className="mt-12">
+          <Eyebrow>Public projects</Eyebrow>
+          {!projects || projects.length === 0 ? (
+            <p className="mt-4 text-body-sm text-ink-subtle">
+              Nothing public yet.
+            </p>
+          ) : (
+            <div className="mt-4 flex flex-col gap-3">
+              {projects.map((p) => (
+                <ProjectRow
+                  key={p.id}
+                  project={p}
+                  href={`/p/${p.slug}`}
+                  showVisibility={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </>
   );

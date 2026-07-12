@@ -7,6 +7,7 @@ export type Profile = {
   username: string;
   display_name: string | null;
   avatar_url: string | null;
+  banner_url: string | null;
   bio: string | null;
   created_at: string;
 }
@@ -77,6 +78,12 @@ export type Reaction = {
   created_at: string;
 }
 
+export type Favorite = {
+  user_id: string;
+  project_id: string;
+  created_at: string;
+}
+
 export type Comment = {
   id: string;
   version_id: string;
@@ -117,6 +124,7 @@ export type Database = {
       branches: TableDef<Branch>;
       versions: TableDef<Version>;
       reactions: TableDef<Reaction>;
+      favorites: TableDef<Favorite>;
       comments: TableDef<Comment>;
       share_links: TableDef<ShareLink>;
       link_views: TableDef<{

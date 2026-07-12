@@ -16,7 +16,7 @@ export default async function ProjectPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, user_id, title, slug, is_public")
+    .select("id, user_id, title, slug, is_public, artwork_url")
     .eq("id", id)
     .maybeSingle();
 

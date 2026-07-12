@@ -4,14 +4,25 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ShareLink } from "@/lib/database.types";
 import { Button, Input } from "@/components/ui";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+
+type Scope = "project" | "version";
 
 /**
- * Owner tool: create/copy/revoke private share links for a version. The raw
- * URL is shown once at creation (only its hash is stored).
+ * Owner tool: create/copy/revoke private share links. Two scopes — the whole
+ * project (default: recipient gets the read-only project view with every
+ * version) or just the selected version (single-track preview). The raw URL
+ * is shown once at creation (only its hash is stored).
  */
-export function ShareManager({ versionId }: { versionId: string }) {
+export function ShareManager({
+  versionId,
+  projectId,
+}: {
+  versionId: string;
+  projectId: string;
+}) {
   const [links, setLinks] = useState<ShareLink[]>([]);
+  const [scope, setScope] = useState<Scope>("project");
   const [expiresHours, setExpiresHours] = useState("168");
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -22,11 +33,11 @@ export function ShareManager({ versionId }: { versionId: string }) {
     const { data } = await supabase
       .from("share_links")
       .select("*")
-      .eq("version_id", versionId)
+      .eq("project_id", projectId)
       .is("revoked_at", null)
       .order("created_at", { ascending: false });
     setLinks(data ?? []);
-  }, [versionId]);
+  }, [projectId]);
 
   // Clear the one-time URL display when switching versions (adjust-during-render).
   const [prevVersionId, setPrevVersionId] = useState(versionId);
@@ -47,7 +58,8 @@ export function ShareManager({ versionId }: { versionId: string }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        version_id: versionId,
+        scope,
+        ...(scope === "project" ? { project_id: projectId } : { version_id: versionId }),
         expires_in_hours: isNaN(hours) || hours <= 0 ? null : hours,
       }),
     });
@@ -72,11 +84,40 @@ export function ShareManager({ versionId }: { versionId: string }) {
     refetch();
   }
 
+  // Project-wide links + links for the currently selected version.
+  const visible = links.filter(
+    (l) => l.version_id === null || l.version_id === versionId
+  );
+
   return (
     <div className="mt-5 border-t border-hairline pt-5">
       <p className="text-caption text-ink-subtle">Private share links</p>
 
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex gap-1" role="tablist" aria-label="Share scope">
+        {(
+          [
+            ["project", "All versions"],
+            ["version", "This version only"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            role="tab"
+            aria-selected={scope === value}
+            onClick={() => setScope(value)}
+            className={cn(
+              "border px-3 py-1 text-caption transition-colors",
+              scope === value
+                ? "border-hairline-strong bg-surface-2 text-ink"
+                : "border-transparent text-ink-subtle hover:text-ink"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
         <Input
           className="w-28"
           type="number"
@@ -107,15 +148,18 @@ export function ShareManager({ versionId }: { versionId: string }) {
         </div>
       )}
 
-      {links.length > 0 && (
+      {visible.length > 0 && (
         <ul className="mt-3 flex flex-col gap-2">
-          {links.map((l) => (
+          {visible.map((l) => (
             <li
               key={l.id}
               className="flex items-center justify-between rounded-md border border-hairline bg-surface-1 px-3 py-2"
             >
               <div className="text-caption text-ink-subtle">
-                Created {formatDate(l.created_at)} · {l.view_count} view
+                <span className="font-mono uppercase text-ink-muted">
+                  {l.version_id === null ? "project" : "version"}
+                </span>
+                {" · "}Created {formatDate(l.created_at)} · {l.view_count} view
                 {l.view_count === 1 ? "" : "s"}
                 {l.expires_at
                   ? ` · expires ${formatDate(l.expires_at)}`

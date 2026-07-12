@@ -3,31 +3,38 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Comment, ReactionKind } from "@/lib/database.types";
+import type { Comment } from "@/lib/database.types";
 import { Button, Input } from "@/components/ui";
 import { cn, formatDate } from "@/lib/utils";
 
-type CommentWithAuthor = Comment & {
+export type CommentWithAuthor = Comment & {
   profiles: { username: string; display_name: string | null; avatar_url: string | null } | null;
 };
 
-/** Like/dislike + comments for a version. Sign-in required to interact. */
-export function Interactions({ versionId }: { versionId: string }) {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [likes, setLikes] = useState(0);
-  const [dislikes, setDislikes] = useState(0);
-  const [mine, setMine] = useState<ReactionKind | null>(null);
-  const [comments, setComments] = useState<CommentWithAuthor[]>([]);
-  const [draft, setDraft] = useState("");
-  const [posting, setPosting] = useState(false);
+export type InteractionsSnapshot = {
+  viewerId: string | null;
+  likes: number;
+  mine: boolean;
+  comments: CommentWithAuthor[];
+};
 
-  const refetch = useCallback(async () => {
+/**
+ * Pluggable backend so the same UI serves both the RLS-scoped pages
+ * (supabase-js, default) and token-authenticated share-link pages
+ * (API routes that validate the share token server-side).
+ */
+export type InteractionsApi = {
+  fetch: (versionId: string) => Promise<InteractionsSnapshot>;
+  toggleLike: (versionId: string, like: boolean) => Promise<void>;
+  postComment: (versionId: string, body: string) => Promise<void>;
+};
+
+const supabaseApi: InteractionsApi = {
+  async fetch(versionId) {
     const supabase = createClient();
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    setUserId(user?.id ?? null);
-
     const [reactions, commentRows] = await Promise.all([
       supabase.from("reactions").select("user_id, kind").eq("version_id", versionId),
       supabase
@@ -37,90 +44,126 @@ export function Interactions({ versionId }: { versionId: string }) {
         .order("created_at", { ascending: false })
         .returns<CommentWithAuthor[]>(),
     ]);
+    const likes = (reactions.data ?? []).filter((r) => r.kind === "like");
+    return {
+      viewerId: user?.id ?? null,
+      likes: likes.length,
+      mine: likes.some((r) => r.user_id === user?.id),
+      comments: commentRows.data ?? [],
+    };
+  },
+  async toggleLike(versionId, like) {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    if (like) {
+      await supabase
+        .from("reactions")
+        .upsert(
+          { version_id: versionId, user_id: user.id, kind: "like" },
+          { onConflict: "version_id,user_id" }
+        );
+    } else {
+      await supabase
+        .from("reactions")
+        .delete()
+        .eq("version_id", versionId)
+        .eq("user_id", user.id);
+    }
+  },
+  async postComment(versionId, body) {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase
+      .from("comments")
+      .insert({ version_id: versionId, user_id: user.id, body });
+  },
+};
 
-    const rows = reactions.data ?? [];
-    setLikes(rows.filter((r) => r.kind === "like").length);
-    setDislikes(rows.filter((r) => r.kind === "dislike").length);
-    setMine(
-      (rows.find((r) => r.user_id === user?.id)?.kind as ReactionKind) ?? null
-    );
-    setComments(commentRows.data ?? []);
-  }, [versionId]);
+/** Heart-like + comments for a version. Sign-in required to interact. */
+export function Interactions({
+  versionId,
+  api = supabaseApi,
+  signInHref = "/login",
+}: {
+  versionId: string;
+  api?: InteractionsApi;
+  signInHref?: string;
+}) {
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [likes, setLikes] = useState(0);
+  const [mine, setMine] = useState(false);
+  const [comments, setComments] = useState<CommentWithAuthor[]>([]);
+  const [draft, setDraft] = useState("");
+  const [posting, setPosting] = useState(false);
+
+  const refetch = useCallback(async () => {
+    const snap = await api.fetch(versionId);
+    setViewerId(snap.viewerId);
+    setLikes(snap.likes);
+    setMine(snap.mine);
+    setComments(snap.comments);
+  }, [api, versionId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
     refetch();
   }, [refetch]);
 
-  async function react(kind: ReactionKind) {
-    if (!userId) return;
-    const supabase = createClient();
-    if (mine === kind) {
-      await supabase
-        .from("reactions")
-        .delete()
-        .eq("version_id", versionId)
-        .eq("user_id", userId);
-    } else {
-      await supabase
-        .from("reactions")
-        .upsert(
-          { version_id: versionId, user_id: userId, kind },
-          { onConflict: "version_id,user_id" }
-        );
-    }
+  async function toggleLike() {
+    if (!viewerId) return;
+    await api.toggleLike(versionId, !mine);
     refetch();
   }
 
   async function postComment(e: React.FormEvent) {
     e.preventDefault();
-    if (!userId || !draft.trim()) return;
+    if (!viewerId || !draft.trim()) return;
     setPosting(true);
-    const supabase = createClient();
-    await supabase
-      .from("comments")
-      .insert({ version_id: versionId, user_id: userId, body: draft.trim() });
+    await api.postComment(versionId, draft.trim());
     setDraft("");
     setPosting(false);
     refetch();
   }
 
-  const reactionBtn = (kind: ReactionKind, count: number, label: string, flip?: boolean) => (
-    <button
-      onClick={() => react(kind)}
-      disabled={!userId}
-      className={cn(
-        "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-body-sm transition-colors disabled:opacity-50",
-        mine === kind
-          ? "border-hairline-tertiary bg-surface-3 text-ink"
-          : "border-hairline bg-surface-1 text-ink-subtle hover:text-ink"
-      )}
-      aria-label={label}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 16 16"
-        fill="currentColor"
-        style={flip ? { transform: "scaleY(-1)" } : undefined}
-      >
-        <path d="M8 1l2 5h5l-4 3.5L12.5 15 8 11.8 3.5 15 5 9.5 1 6h5z" />
-      </svg>
-      {count}
-    </button>
-  );
-
   return (
     <div className="rounded-lg border border-hairline bg-surface-1 p-6">
       <div className="flex items-center gap-2">
-        {reactionBtn("like", likes, "Like")}
-        {reactionBtn("dislike", dislikes, "Dislike", true)}
-        {!userId && (
+        <button
+          onClick={toggleLike}
+          disabled={!viewerId}
+          className={cn(
+            "flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-body-sm transition-colors disabled:opacity-50",
+            mine
+              ? "border-hairline-tertiary bg-surface-3 text-ink"
+              : "border-hairline bg-surface-1 text-ink-subtle hover:text-ink"
+          )}
+          aria-label={mine ? "Unlike" : "Like"}
+          aria-pressed={mine}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill={mine ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth="1.4"
+          >
+            <path d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z" />
+          </svg>
+          {likes}
+        </button>
+        {!viewerId && (
           <p className="ml-2 text-caption text-ink-tertiary">
-            <Link href="/login" className="text-primary-hover">
+            <Link href={signInHref} className="text-ink underline underline-offset-2">
               Sign in
             </Link>{" "}
-            to react and comment.
+            to like and comment.
           </p>
         )}
       </div>
@@ -129,11 +172,11 @@ export function Interactions({ versionId }: { versionId: string }) {
         <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={userId ? "Add a comment…" : "Sign in to comment"}
-          disabled={!userId}
+          placeholder={viewerId ? "Add a comment…" : "Sign in to comment"}
+          disabled={!viewerId}
           maxLength={2000}
         />
-        <Button type="submit" disabled={!userId || !draft.trim() || posting}>
+        <Button type="submit" disabled={!viewerId || !draft.trim() || posting}>
           Post
         </Button>
       </form>
