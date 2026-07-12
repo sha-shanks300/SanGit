@@ -6,12 +6,12 @@ type ButtonVariant = "primary" | "secondary" | "tertiary";
 
 export function buttonClasses(variant: ButtonVariant = "primary") {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-md px-3.5 py-2 text-button font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
+    "inline-flex items-center justify-center gap-1.5 rounded-md px-5 py-2.5 text-button font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer";
   switch (variant) {
     case "primary":
-      return cn(base, "bg-primary text-white hover:bg-primary-hover active:bg-primary-focus");
+      return cn(base, "bg-primary text-white cta-hover-gradient active:bg-primary-active");
     case "secondary":
-      return cn(base, "bg-surface-1 text-ink border border-hairline hover:bg-surface-2 hover:border-hairline-strong");
+      return cn(base, "bg-transparent text-ink border border-ink hover:bg-surface-1");
     case "tertiary":
       return cn(base, "bg-transparent text-ink hover:bg-surface-1");
   }
@@ -32,7 +32,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "w-full rounded-md bg-surface-1 border border-hairline px-3 py-2 text-body text-ink placeholder:text-ink-tertiary",
+        "w-full rounded-sm bg-canvas border border-hairline px-4 py-2.5 text-body text-ink placeholder:text-ink-tertiary",
         className
       )}
       {...props}
@@ -55,7 +55,7 @@ export function Card({
   );
 }
 
-/** Protagonist panel — 16px radius, surface-1, top-edge highlight. */
+/** Protagonist panel — sharp corners, surface-1, hairline border. */
 export function Panel({
   className,
   ...props
@@ -63,7 +63,7 @@ export function Panel({
   return (
     <div
       className={cn(
-        "panel-edge rounded-xl bg-surface-1 border border-hairline p-6",
+        "rounded-xl bg-surface-1 border border-hairline p-6",
         className
       )}
       {...props}
@@ -83,10 +83,10 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-caption",
+        "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 font-mono text-caption uppercase tracking-[0.28px]",
         tone === "neutral" && "text-ink-muted",
         tone === "success" && "text-success",
-        tone === "accent" && "text-primary-hover",
+        tone === "accent" && "text-primary",
         tone === "processing" && "text-ink-subtle animate-pulse",
         className
       )}
@@ -103,7 +103,7 @@ export function Eyebrow({
   return (
     <p
       className={cn(
-        "text-eyebrow font-medium uppercase tracking-[0.4px] text-ink-subtle",
+        "font-mono text-eyebrow uppercase text-ink-subtle",
         className
       )}
       {...props}

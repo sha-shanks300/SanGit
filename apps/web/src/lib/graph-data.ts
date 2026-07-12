@@ -15,7 +15,16 @@ export type GraphNode = {
   version: Version;
   branchName: string;
   isMain: boolean;
+  /** Resting y for the zig-zag layout: branch lane ± alternating stagger. */
+  zigY: number;
+  /** Initial y seed so the first frames already look staggered. */
+  y: number;
 };
+
+/** Vertical distance between branch lanes. */
+const LANE_GAP = 70;
+/** Alternating up/down stagger along a chain. */
+const ZIG = 32;
 
 export type GraphLink = {
   source: string;
@@ -41,12 +50,28 @@ export function buildGraph(
     else byBranch.set(v.branch_id, [v]);
   }
 
-  const nodes: GraphNode[] = ordered.map((v) => ({
-    id: v.id,
-    version: v,
-    branchName: branchName.get(v.branch_id) ?? "",
-    isMain: v.id === mainVersionId,
-  }));
+  const laneOf = new Map(branches.map((b, i) => [b.id, i]));
+  const seqOf = new Map<string, number>();
+  for (const list of byBranch.values()) {
+    list.forEach((v, i) => seqOf.set(v.id, i));
+  }
+  const laneCount = Math.max(branches.length, 1);
+
+  const nodes: GraphNode[] = ordered.map((v) => {
+    const lane = laneOf.get(v.branch_id) ?? 0;
+    const seq = seqOf.get(v.id) ?? 0;
+    const zigY =
+      (lane - (laneCount - 1) / 2) * LANE_GAP +
+      (seq % 2 === 0 ? -ZIG : ZIG);
+    return {
+      id: v.id,
+      version: v,
+      branchName: branchName.get(v.branch_id) ?? "",
+      isMain: v.id === mainVersionId,
+      zigY,
+      y: zigY,
+    };
+  });
 
   const links: GraphLink[] = [];
 

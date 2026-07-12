@@ -84,7 +84,7 @@ export default function DevicesPage() {
   return (
     <div className="max-w-2xl">
       <Eyebrow>Settings</Eyebrow>
-      <h1 className="mt-1 text-headline font-semibold tracking-tight text-ink">
+      <h1 className="mt-1 text-headline text-ink">
         Devices
       </h1>
       <p className="mt-2 text-body-sm text-ink-subtle">

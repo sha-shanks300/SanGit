@@ -76,7 +76,7 @@ export default function DevGraphPage() {
   return (
     <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10">
       <Eyebrow>Dev</Eyebrow>
-      <h1 className="mt-1 text-headline font-semibold tracking-tight text-ink">
+      <h1 className="mt-1 text-headline text-ink">
         Version graph playground
       </h1>
       <Panel className="mt-8 overflow-hidden">

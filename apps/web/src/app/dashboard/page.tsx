@@ -1,14 +1,32 @@
+import { createClient } from "@/lib/supabase/server";
 import { Eyebrow } from "@/components/ui";
-import { ProjectGrid } from "@/components/project-grid";
+import { ProfileHeader } from "@/components/profile-header";
+import { ProjectRows } from "@/components/project-rows";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { data: profile } = user
+    ? await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle()
+    : { data: null };
+
   return (
     <div>
-      <Eyebrow>Dashboard</Eyebrow>
-      <h1 className="mt-1 text-headline font-semibold tracking-tight text-ink">
-        Projects
-      </h1>
-      <ProjectGrid />
+      {profile ? (
+        <ProfileHeader profile={profile} isOwner />
+      ) : (
+        <>
+          <Eyebrow>Dashboard</Eyebrow>
+          <h1 className="mt-1 text-headline text-ink">Projects</h1>
+        </>
+      )}
+      <div className="mt-10">
+        <Eyebrow>Projects</Eyebrow>
+        <ProjectRows />
+      </div>
     </div>
   );
 }

@@ -1,154 +1,180 @@
-# DESIGN.md — SanGit visual spec (Linear-derived dark system)
+# DESIGN.md — SanGit visual spec (Ferrari-derived cinematic editorial system)
 
 ## Overview
 
-Linear's marketing canvas is the deepest dark surface in this collection — `{colors.canvas}` is #010102, essentially pure black with a faint blue tint. On top sits a four-step surface ladder (`{colors.surface-1}` through `{colors.surface-4}`) for cards, panels, and lifted tiles, with hairline borders running from `{colors.hairline}` (#23252a) up through `{colors.hairline-strong}` and `{colors.hairline-tertiary}`. Light gray text (`{colors.ink}` #f7f8f8) carries the body and headlines.
+The system reads as cinematic editorial — closer to a luxury-magazine spread than a typical app dashboard. The base canvas is near-black `{colors.canvas}` (#181818 — never pure black, slight warmth) holding pure white display type. The single brand voltage is **Rosso Corsa** `{colors.primary}` (#da291c), used scarcely: primary CTAs, the SanGit mark, and the Main-version highlight (this app's "race-position" equivalent).
 
-The single chromatic accent is **Linear lavender-blue** `{colors.primary}` (#5e6ad2) — used on the brand mark, focus rings, and the primary CTA button. A lighter hover state (`{colors.primary-hover}` #828fff) and a focus-tinted variant (`{colors.primary-focus}` #5e69d1) extend the same hue. Linear avoids saturated greens, oranges, reds, etc. on the marketing canvas — the only semantic color is `{colors.semantic-success}` (#27a644) for status pills and the rare success indicator.
+Type runs a three-tier system: a display face for headlines, a body face for running text, and a mono face for technical labels — all at modest weights (display 400, body 400). **The brand never uses bold display copy.** Display sizes carry negative tracking (-0.48px to -1.92px); body stays at 0. CTA labels render in a compact 14px/500 without generous tracking. Nav items and section labels ("eyebrows") render in mono with 0.28px tracking.
 
-Display type runs Linear's custom sans (with `SF Pro Display` fallback) at weight 500–700 with negative letter-spacing scaling from -3.0px at 80px down to 0 at body. The body family is Linear's text cut, and a Linear Mono is reserved for code snippets in product screenshots.
-
-The page rhythm is **dense product screenshots** — Linear's marketing leads with high-fidelity captures of the product UI (issue list, project view, dashboard) framed in `{colors.surface-1}` panels with `{rounded.xl}` 16px corners. The chrome is intentionally minimal so the app screenshots can do the heavy lifting.
+Corners are **sharp 0px by default** — every CTA, card, and panel. Pill geometry is reserved for badge labels only. Depth comes from brightness-step elevation and 1px hairlines, not drop shadows.
 
 **Key Characteristics:**
-- **Dark-canvas marketing system** — `{colors.canvas}` (#010102) is the deepest dark in this collection.
-- **Lavender-blue brand accent** (`{colors.primary}` #5e6ad2) — used scarcely on brand mark, focus, and the primary CTA.
-- Four-step surface ladder (canvas → surface-1 → surface-2 → surface-3 → surface-4) carries hierarchy without shadow.
-- Display tracking pulls aggressively negative (-3.0px at 80px); body holds at -0.05px.
-- Cards use `{rounded.lg}` 12px corners with 1px hairline borders — never pill, rarely 16px.
-- **Product UI screenshots** dominate the page. The marketing chrome is a dark frame for the app.
-- No second chromatic color. No atmospheric gradients. No spotlight cards.
+- Single accent: `{colors.primary}` (Rosso Corsa #da291c) for primary CTAs, the mark, and Main-version highlights. Used scarcely.
+- Near-black canvas (#181818) — never pure black (`#000000` forbidden).
+- Three-tier typography: display / body / mono. Display weight stays at 400 — never bold.
+- Sharp `{rounded.none}` (0px) corners on every CTA, card, and panel.
+- Hairlines + brightness-step elevation — no drop shadow tiers.
+- Explicit spacing token ladder (base 4px): xxxs 4 / xxs 8 / xs 16 / sm 24 / md 32 / lg 48 / xl 64 / xxl 96 / super 128.
+- Global focus ring is yellow (#f6e500) — the only sanctioned use of yellow.
+- No second saturated color, no gradients except the two documented brand gradients.
 
 ## SanGit component mapping
 
 How the spec applies to this app:
 
-- Lavender additionally marks the **Main version node ring/badge and the player playhead** (the app's "brand mark" equivalents). Success green is used for `render_status: ready` pills. Render-failed states use ink hierarchy + iconography, not red.
-- Project cards → `feature-card`; timeline tree panel and player panel → `product-screenshot-card` (16px radius — they are this app's protagonist panels); version detail panel → surface-2 lift; status badges (`processing`, `ready`, `failed`, `Main`) → `status-badge` pill; comments → `testimonial-card` structure.
-- Fonts: **Inter** (display + body substitute) and **JetBrains Mono** (version hashes/IDs, timestamps).
+- **Rosso Corsa** marks the primary CTA, the wordmark glyph, the **Main version halo/label**, the **player play button and playhead**, and the selected timeline node fill. Nothing else.
+- Success green `{colors.semantic-success}` (#03904a) is used for `render_status: ready` pills and the "public" badge. Render-failed states use ink hierarchy + dashed iconography, not warning red.
+- Project cards, timeline/player panels, comment cards → surface-1 plates with 1px hairline and 0px corners. Version detail panel → surface-2 lift.
+- Status badges (`processing`, `ready`, `failed`, `Main`) → `badge-pill`: the **only** pill in the system — mono uppercase caption on `{colors.surface-2}`.
+- Fonts (open substitutes for the licensed originals): **Space Grotesk** (display, CohereText substitute), **Inter** (body, Unica77 substitute), **JetBrains Mono** (labels/hashes/timestamps, CohereMono substitute).
+- Selected-node emphasis in the tree/graph is a white ink stroke (the old "lighter hover accent" role); the Main halo ring is Rosso Corsa.
 
 ## Colors
 
 ### Brand & Accent
-- **Lavender-Blue** ({colors.primary}): #5e6ad2 — The signature accent — primary CTA, brand mark, link emphasis.
-- **Lavender Hover** ({colors.primary-hover}): #828fff — hovered state of the primary CTA.
-- **Lavender Focus** ({colors.primary-focus}): #5e69d1 — focus-ring tint — focused inputs, focused buttons.
-- **Brand Secure** ({colors.brand-secure}): #7a7fad — muted lavender-gray.
+- **Rosso Corsa** ({colors.primary}): #da291c — primary CTA fill, the mark, Main-version highlights. Used scarcely.
+- **Rosso Corsa Hover** ({colors.primary-hover}): #9d2211 — documented darker hover.
+- **Rosso Corsa Active** ({colors.primary-active}): #b01e0a — press state.
+- **Focus Yellow** ({colors.focus-ring}): #f6e500 — global focus-ring color only. Never used decoratively.
 
-### Surface
-- **Canvas** ({colors.canvas}): #010102 — default page background, near-pure black with a faint blue tint.
-- **Surface 1** ({colors.surface-1}): #08090a — one step above canvas — cards, panels.
-- **Surface 2** ({colors.surface-2}): #0f1011 — two steps above — featured cards, hovered cards.
-- **Surface 3** ({colors.surface-3}): #141516 — three steps above — sub-nav, dropdowns.
-- **Surface 4** ({colors.surface-4}): #191a1b — deepest lifted surface.
-- **Hairline** ({colors.hairline}): #23252a — 1px borders on cards and dividers.
-- **Hairline Strong** ({colors.hairline-strong}): #2e3035 — stronger 1px borders.
-- **Hairline Tertiary** ({colors.hairline-tertiary}): #3a3d44 — tertiary borders for nested surfaces.
-- **Inverse Canvas** ({colors.inverse-canvas}): #ffffff.
+### Surface (brightness-step ladder on the dark canvas)
+- **Canvas** ({colors.canvas}): #181818 — page floor, never pure black.
+- **Surface 1** ({colors.surface-1}): #202020 — cards, panels (one step up).
+- **Surface 2** ({colors.surface-2}): #303030 — canvas-elevated: featured/hovered cards, badges, detail panel.
+- **Surface 3** ({colors.surface-3}): #3c3c3c — dropdowns, popovers, sliders.
+- **Surface 4** ({colors.surface-4}): #484848 — deepest lift (default node fill).
+- **Hairline** ({colors.hairline}): #303030 — 1px dividers and card outlines.
+- **Hairline Strong** ({colors.hairline-strong}): #3c3c3c.
+- **Hairline Tertiary** ({colors.hairline-tertiary}): #4a4a4a.
 
 ### Text
-- **Ink** ({colors.ink}): #f7f8f8 — headlines and emphasized body.
-- **Ink Muted** ({colors.ink-muted}): #d0d6e0 — secondary type.
-- **Ink Subtle** ({colors.ink-subtle}): #8a8f98 — tertiary type.
-- **Ink Tertiary** ({colors.ink-tertiary}): #62666d — disabled, footnotes.
+- **Ink** ({colors.ink}): #ffffff — display, body emphasis.
+- **Ink Muted** ({colors.ink-muted}): #969696 — default running text.
+- **Ink Subtle** ({colors.ink-subtle}): #8f8f8f — secondary labels, eyebrows.
+- **Ink Tertiary** ({colors.ink-tertiary}): #666666 — captions, disabled, footnotes.
 
 ### Semantic
-- **Success Green** ({colors.semantic-success}): #27a644 — status pills, success indicators. The only semantic color.
-- **Overlay** ({colors.semantic-overlay}): rgba(0,0,0,0.6) — modal scrim.
+- **Success** ({colors.semantic-success}): #03904a — ready pills, confirmation.
+- **Info** ({colors.semantic-info}): #4c98b9 — info badges (rare).
+- **Warning** ({colors.semantic-warning}): #f13a2c — validation warnings (rare).
+- **Overlay**: rgba(0,0,0,0.6) — modal scrim.
+
+### Decorative gradients (the only two allowed)
+- **Brand red**: `linear-gradient(180deg, #a00c01, #da291c 64%)` — primary-CTA hover state (`.cta-hover-gradient`).
+- **Dark grey**: `linear-gradient(180deg, #3c3c3c, #030303 64%)` — atmospheric section transitions (rare).
 
 ## Typography
 
-- **Sans**: Inter (500/600/700 display, 400 body) — fallback `SF Pro Display, -apple-system, system-ui, Segoe UI, Roboto`.
-- **Mono**: JetBrains Mono 400 — fallback `ui-monospace, SF Mono, Menlo`.
+- **Display**: Space Grotesk 400 — headlines only (`h1`–`h3` globally). Fallback `Inter, ui-sans-serif, system-ui`.
+- **Body**: Inter 400 — fallback `ui-sans-serif, system-ui, Segoe UI, Roboto`.
+- **Mono**: JetBrains Mono 400 — nav links, eyebrows, badges, hashes, timestamps. Fallback `ui-monospace, SF Mono, Menlo`.
 
 | Token | Size | Weight | Line Height | Letter Spacing | Use |
 |---|---|---|---|---|---|
-| display-xl | 80px | 600 | 1.05 | -3.0px | Largest hero headline |
-| display-lg | 56px | 600 | 1.10 | -1.8px | Section opener headlines |
-| display-md | 40px | 600 | 1.15 | -1.0px | Sub-section headlines |
-| headline | 28px | 600 | 1.20 | -0.6px | Panel titles, CTA banner heading |
-| card-title | 22px | 500 | 1.25 | -0.4px | Card title |
-| subhead | 20px | 400 | 1.40 | -0.2px | Lead body |
-| body-lg | 18px | 400 | 1.50 | -0.1px | Hero subhead |
-| body | 16px | 400 | 1.50 | -0.05px | Default body |
-| body-sm | 14px | 400 | 1.50 | 0 | Card body, footer |
-| caption | 12px | 400 | 1.40 | 0 | Captions, meta, status |
-| button | 14px | 500 | 1.20 | 0 | All button labels |
-| eyebrow | 13px | 500 | 1.30 | 0.4px | Section eyebrow (positive tracking) |
+| display-xl | 96px | 400 | 1.00 | -1.92px | Landing hero h1 (display face) |
+| display-lg | 60px | 400 | 1.00 | -1.2px | Section heads |
+| display-md | 48px | 400 | 1.20 | -0.48px | Sub-section heads, profile h1 |
+| headline | 32px | 400 | 1.20 | -0.32px | Page/panel titles |
+| card-title | 24px | 400 | 1.30 | 0 | Card titles, list labels |
+| subhead | 20px | 400 | 1.40 | 0 | Lead body |
+| body-lg | 18px | 400 | 1.50 | 0 | Hero subhead |
+| body | 16px | 400 | 1.50 | 0 | Default body |
+| body-sm | 14px | 400 | 1.40 | 0 | Card body, footer |
+| caption | 12px | 400 | 1.40 | 0 | Photo captions, meta, badges |
+| button | 14px | 500 | 1.20 | 0 | CTA labels — compact, sentence case |
+| eyebrow | 14px | 400 | 1.40 | 0.28px | Section labels, badges (mono, uppercase) |
 | mono | 13px | 400 | 1.50 | 0 | IDs, hashes, timestamps |
 
-Principles: aggressive negative tracking on display; single voice display→body (600→400, same family); eyebrow uses positive tracking; mono only for code/ID contexts.
+Principles: display weight stays at 400 — editorial confidence, not bombastic; negative tracking on display sizes only; CTA labels compact at 14/500 without uppercase tracking; nav labels and eyebrows in mono with 0.28px tracking.
 
 ## Layout
 
-- Base unit 4px. Tokens: xxs 4 · xs 8 · sm 12 · md 16 · lg 24 · xl 32 · xxl 48 · section 96.
-- Card interior padding: 24px (feature/pricing), 32px (testimonial/comment), 48px (CTA banners).
-- Button padding: 8px vertical · 14px horizontal. Input padding: 8px vertical · 12px horizontal.
-- Max content width ~1280px. Grids 3-up desktop → 2-up tablet (1024px) → 1-up mobile (768px).
+- Base unit 4px. Tokens: xxxs 4 · xxs 8 · xs 16 · sm 24 · md 32 · lg 48 · xl 64 · xxl 96 · super 128.
+- Section padding: xxl (96px) for major bands; super (128px) reserved for hero depth.
+- Max content width ~1280px. Grids 3-up desktop → 2-up tablet → 1-up mobile.
+- Card interior padding: 24px (cards), 32px (comment cards), 48px (CTA bands).
 - Protagonist panels (timeline tree, player) span full content width.
-- The dark canvas IS the whitespace. Sections separate by lift onto surface-1 panels, not gaps. 24px gaps within panels; 96px between sections.
+- Generous editorial pacing: the dark canvas is the whitespace; panels separate by brightness lift + hairlines, not gaps.
 
 ## Elevation & Depth
 
 | Level | Treatment | Use |
 |---|---|---|
-| 0 (flat) | No shadow, no border | Body type, hero text, footer |
-| 1 (charcoal lift) | surface-1 bg, 1px hairline | Default cards, panels |
-| 2 (surface-2 lift) | surface-2 bg, 1px hairline-strong | Featured/hovered cards, detail panel |
-| 3 (surface-3 lift) | surface-3 bg | Sub-nav, dropdown menus |
-| 4 (focus ring) | 2px primary-focus outline at 50% | Focused input/button |
+| Flat (canvas) | #181818 | Body bands, footer |
+| Card | surface-1 (#202020), 1px hairline | Default cards, panels |
+| Elevated | surface-2 (#303030), 1px hairline-strong | Featured/hovered cards, detail panel, badges |
+| Popover | surface-3 (#3c3c3c) | Dropdowns, tooltips, settings popover |
+| Focus | 2px #f6e500 outline | Focused input/button |
 
-Depth is carried by the surface ladder + hairline borders — no drop shadows. A subtle white top-edge highlight on lifted panels is allowed. No atmospheric gradients, no spotlight cards.
+No drop shadows. Depth is brightness steps + hairlines. (A single soft `0 4px 8px rgba(0,0,0,0.1)` is documented for hovered cards but is optional.) No top-edge glow highlights.
 
 ## Shapes
 
 | Token | Value | Use |
 |---|---|---|
-| rounded-xs | 4px | Small chips, status badges |
-| rounded-sm | 6px | Inline tags |
-| rounded-md | 8px | All buttons, form inputs |
-| rounded-lg | 12px | Cards |
-| rounded-xl | 16px | Protagonist panels (tree, player) |
-| rounded-xxl | 24px | Oversized CTA banners (rare) |
-| rounded-pill | 9999px | Tab toggles, status pills only |
-| rounded-full | 9999px | Avatar circles (32–40px) |
+| rounded-xs | 2px | Tight badges (rare) |
+| rounded-sm | 4px | Form inputs — the only rounded control |
+| rounded-md | 0px | Buttons — sharp is the brand shape |
+| rounded-lg | 0px | Cards |
+| rounded-xl | 0px | Protagonist panels |
+| rounded-xxl | 0px | CTA bands |
+| rounded-full | 9999px | badge-pill, avatars, circular play button only |
+
+The radius vocabulary is sharp by default. **Never rounded or pill CTAs.** Pill geometry is reserved for badge labels; circles for avatars and the player's play control.
 
 ## Components
 
-- **button-primary** — bg primary, white text, 14px/500, padding 8×14, rounded 8px. Hover → primary-hover; pressed → primary-focus.
-- **button-secondary** — bg surface-1, ink text, 1px hairline border, padding 8×14, rounded 8px.
-- **button-tertiary** — transparent/canvas bg, ink text, rounded 8px, padding 8×14.
-- **tab pill** — default: canvas bg + ink-subtle; selected: surface-2 bg + ink; rounded pill, padding 6×14.
-- **feature-card** (project card) — surface-1, 1px hairline, rounded 12px, padding 24px.
-- **product-screenshot-card** (tree/player panel) — surface-1, rounded 16px, padding 24px.
-- **testimonial-card** (comment) — surface-1, rounded 12px, padding 32px, avatar 32–40px rounded-full.
-- **cta-banner** — surface-1, headline type, rounded 12px, padding 48px.
-- **text-input** — surface-1 bg, ink text, rounded 8px, padding 8×12; focus = 2px primary-focus outline at 50% opacity (surface unchanged).
-- **status-badge** — surface-2 bg, ink-muted text, caption type, rounded pill, padding 2×8.
-- **top-nav** — sticky, canvas bg, 56px tall; wordmark left, links center, secondary+primary button pair right.
-- **footer** — canvas bg, ink-subtle caption links, padding 64×32.
+- **button-primary** — Rosso Corsa CTA: bg primary, white text, 14px/500 sentence case, padding 10×20 (app scale; marketing CTAs go 14×32/48px tall), rounded 0px. Hover → brand red gradient (`.cta-hover-gradient`); pressed → primary-active.
+- **button-outline (secondary)** — transparent bg, 1px white (ink) border, ink text, rounded 0px. Hover → surface-1 fill.
+- **button-tertiary** — transparent, ink text, rounded 0px, hover surface-1.
+- **text-input** — canvas bg, ink text, 1px hairline border, rounded 4px, padding 10×16.
+- **card** — surface-1, 1px hairline, rounded 0px, padding 24px.
+- **panel** (tree/player protagonist) — surface-1, 1px hairline, rounded 0px, padding 24px. No edge glow.
+- **badge-pill (status-badge)** — surface-2 bg, mono uppercase caption with 0.28px tracking, rounded full, padding 2×10. The only pill. Tones: neutral ink-muted, success green, accent Rosso Corsa (Main), processing pulse.
+- **eyebrow** — mono 14px/400 uppercase, 0.28px tracking, ink-subtle.
+- **segmented tab (Tree/Graph toggle)** — sharp 0px; selected: surface-2 bg + hairline-strong border + ink; unselected: transparent border, ink-subtle.
+- **top-nav** — sticky, canvas bg, 64px tall, hairline bottom border; mark + wordmark left, mono nav links (0.28px tracking) center-left, buttons right.
+- **footer** — canvas bg, ink-subtle links, body-sm.
 
 ## Do's and Don'ts
 
-Do: reserve canvas #010102 as the anchor; lavender ONLY for brand mark / primary CTA / focus / link emphasis / Main indicator / playhead; use the surface ladder without skipping levels; display 600 + body 400; negative tracking on display; 8px-corner CTAs.
+**Do**
+- Reserve Rosso Corsa for primary CTAs, the mark, Main-version highlights, and the playhead.
+- Set every CTA and card at 0px sharp corners.
+- Render CTA labels in sentence case at 14/500 without added tracking.
+- Keep display weight at 400 — never bold.
+- Use the explicit 4px-base spacing ladder rather than ad-hoc values.
+- Use mono + 0.28px tracking for nav links, eyebrows, and badges.
 
-Don't: light mode; lavender as section background or card fill; a second chromatic accent; gradients or spotlight cards; pill-round CTAs; `#000000` true black canvas.
+**Don't**
+- Don't introduce a saturated color other than Rosso Corsa (success green is semantic only).
+- Don't use rounded or pill CTAs — pills are for badges only.
+- Don't bold display copy.
+- Don't use pure black (#000000) — canvas is #181818.
+- Don't add drop shadow tiers — brightness steps + hairlines carry depth.
+- Don't use focus-yellow anywhere except the focus ring.
 
 ## Responsive
 
 | Breakpoint | Width | Changes |
 |---|---|---|
-| Desktop-XL | 1440px | Default |
-| Desktop | 1280px | 3-up grids maintained |
-| Tablet | 1024px | 3-up → 2-up |
-| Mobile-Lg | 768px | Nav hamburger; 1-up grids |
-| Mobile | 480px | Single column; display-xl scales 80→~36px |
+| Mobile | < 640px | Hero h1 96→~40px; 1-up grids; nav collapses |
+| Tablet | 640–1024px | 2-up grids; hero h1 ~72px |
+| Desktop | 1024–1280px | 3-up grids; full hero h1 |
+| Wide | > 1280px | Content caps at 1280px |
 
-Touch targets ≥44px on touch viewports; CTAs ≥40px tall everywhere. The timeline tree pans/scrolls horizontally on mobile rather than cropping.
+Touch targets: primary CTA ≥44px; nav items padded to an effective 48px tap area. The timeline tree pans/scrolls horizontally on mobile rather than cropping.
 
 ## Iteration Guide
 
-1. Focus on one component at a time; reference it by token name.
-2. When introducing a section, decide first which surface lift it lives on.
-3. Default body to 16px/400.
-4. Treat lavender as scarce.
+1. Focus on a single component at a time; reference it by token name.
+2. CTAs and cards default to 0px sharp. Pill is reserved for badges.
+3. Use token refs everywhere — never inline hex.
+4. Display = Space Grotesk 400; body = Inter 400; labels = JetBrains Mono 400.
+5. Rosso Corsa stays scarce — CTA, mark, Main highlight, playhead only.
+
+## Known gaps
+
+- CohereText / Unica77 / CohereMono are licensed; Space Grotesk / Inter / JetBrains Mono are the documented substitutes.
+- The source spec's light editorial bands (`canvas-light` #ffffff surfaces) are not used in SanGit — the app is dark-only.
+- Animation timings out of scope.
