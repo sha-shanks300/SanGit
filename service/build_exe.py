@@ -16,9 +16,15 @@ subprocess.run(
         "--noconsole",
         "--name", "SanGit",
         "--clean",
-        # pystray/PIL backends that PyInstaller misses:
-        "--hidden-import", "pystray._win32",
-        "--hidden-import", "PIL.ImageDraw",
+        # the toast/settings/tray UI is PySide6; ship the logo asset and
+        # skip the heavy Qt modules the service never imports
+        "--add-data", "assets;assets",
+        "--exclude-module", "PySide6.QtWebEngineCore",
+        "--exclude-module", "PySide6.QtWebEngineWidgets",
+        "--exclude-module", "PySide6.QtQml",
+        "--exclude-module", "PySide6.QtQuick",
+        "--exclude-module", "PySide6.QtPdf",
+        "--exclude-module", "PySide6.Qt3DCore",
         "main.py",
     ],
     check=True,

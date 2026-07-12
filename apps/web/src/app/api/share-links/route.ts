@@ -4,8 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { isUuid } from "@/lib/ingest-auth";
 
 /**
- * Create a share link for a version. The raw token is returned exactly once;
- * only its hash is stored, so links are revocable but never enumerable.
+ * Create a share link. Two scopes:
+ * - "project" (default in the UI): version_id null — the link opens the
+ *   read-only project view with every version, tree/graph, and player.
+ * - "version": the original single-track private preview.
+ *
+ * The raw token is returned exactly once; only its hash is stored, so links
+ * are revocable but never enumerable.
  */
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -17,7 +22,9 @@ export async function POST(request: Request) {
   }
 
   let body: {
+    scope?: "project" | "version";
     version_id?: string;
+    project_id?: string;
     label?: string;
     expires_in_hours?: number | null;
     max_views?: number | null;
@@ -28,18 +35,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid JSON" }, { status: 400 });
   }
 
-  if (!isUuid(body.version_id)) {
-    return NextResponse.json({ error: "version_id must be a UUID" }, { status: 400 });
-  }
+  // Legacy bodies (version_id only) stay version-scoped.
+  const scope = body.scope ?? "version";
 
-  // RLS: only rows the user owns are visible here.
-  const { data: version } = await supabase
-    .from("versions")
-    .select("id, user_id, project_id")
-    .eq("id", body.version_id)
-    .maybeSingle();
-  if (!version || version.user_id !== user.id) {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+  let versionId: string | null = null;
+  let projectId: string;
+
+  if (scope === "project") {
+    if (!isUuid(body.project_id)) {
+      return NextResponse.json({ error: "project_id must be a UUID" }, { status: 400 });
+    }
+    // RLS: only rows the user owns are visible here.
+    const { data: project } = await supabase
+      .from("projects")
+      .select("id, user_id")
+      .eq("id", body.project_id)
+      .maybeSingle();
+    if (!project || project.user_id !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    projectId = project.id;
+  } else {
+    if (!isUuid(body.version_id)) {
+      return NextResponse.json({ error: "version_id must be a UUID" }, { status: 400 });
+    }
+    const { data: version } = await supabase
+      .from("versions")
+      .select("id, user_id, project_id")
+      .eq("id", body.version_id)
+      .maybeSingle();
+    if (!version || version.user_id !== user.id) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    versionId = version.id;
+    projectId = version.project_id;
   }
 
   const token = randomBytes(24).toString("base64url");
@@ -52,8 +81,8 @@ export async function POST(request: Request) {
     .from("share_links")
     .insert({
       user_id: user.id,
-      version_id: version.id,
-      project_id: version.project_id,
+      version_id: versionId,
+      project_id: projectId,
       token_hash: createHash("sha256").update(token).digest("hex"),
       kind: "private",
       label: body.label?.slice(0, 80) || null,

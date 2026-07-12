@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
 import { Interactions } from "@/components/interactions";
+import { FavoriteButton } from "@/components/favorite-button";
 import { ShareManager } from "@/components/share-manager";
 import { Eyebrow, Panel, StatusBadge } from "@/components/ui";
 
@@ -80,7 +81,7 @@ export function ProjectView({
         <div>
           <Eyebrow>Project</Eyebrow>
           <div className="mt-1 flex items-center gap-3">
-            <h1 className="text-headline font-semibold tracking-tight text-ink">
+            <h1 className="text-headline text-ink">
               {project.title}
             </h1>
             {project.is_public ? (
@@ -88,6 +89,7 @@ export function ProjectView({
             ) : (
               <StatusBadge>private</StatusBadge>
             )}
+            <FavoriteButton projectId={project.id} />
           </div>
           <p className="mt-1 text-body-sm text-ink-subtle">
             {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
@@ -108,10 +110,10 @@ export function ProjectView({
                 aria-selected={view === mode}
                 onClick={() => switchView(mode)}
                 className={cn(
-                  "rounded-full px-3.5 py-1.5 text-button capitalize transition-colors",
+                  "border px-3.5 py-1.5 text-button capitalize transition-colors",
                   view === mode
-                    ? "bg-surface-2 text-ink"
-                    : "text-ink-subtle hover:text-ink"
+                    ? "border-hairline-strong bg-surface-2 text-ink"
+                    : "border-transparent text-ink-subtle hover:text-ink"
                 )}
               >
                 {mode}
@@ -146,7 +148,9 @@ export function ProjectView({
             mainVersionId={project.main_version_id}
             onChanged={refetch}
           >
-            {isOwner && <ShareManager versionId={selected.id} />}
+            {isOwner && (
+              <ShareManager versionId={selected.id} projectId={project.id} />
+            )}
           </VersionPanel>
           <Interactions versionId={selected.id} />
         </div>

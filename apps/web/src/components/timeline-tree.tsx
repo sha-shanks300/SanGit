@@ -209,7 +209,7 @@ export function TimelineTree({
                   }
                   stroke={
                     isSelected
-                      ? "var(--primary-hover)"
+                      ? "var(--ink)"
                       : failed
                         ? "var(--ink-tertiary)"
                         : "var(--hairline-tertiary)"
@@ -223,7 +223,7 @@ export function TimelineTree({
                     x={x}
                     y={y - NODE_R - 12}
                     textAnchor="middle"
-                    fill="var(--primary-hover)"
+                    fill="var(--primary)"
                     fontSize={10}
                     fontWeight={500}
                   >
