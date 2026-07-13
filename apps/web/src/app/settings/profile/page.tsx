@@ -6,7 +6,14 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/database.types";
 import { uploadPublicImage } from "@/lib/image-upload";
+import { ImageCropDialog } from "@/components/image-crop-dialog";
 import { Button, Eyebrow, Input, Panel } from "@/components/ui";
+
+/** Crop mask + baked output size per image kind — matches how the UI renders. */
+const CROP_SPECS = {
+  avatar: { aspect: 1, shape: "round", outWidth: 512, outHeight: 512 },
+  banner: { aspect: 4, shape: "rect", outWidth: 1600, outHeight: 400 },
+} as const;
 
 /**
  * Profile editing: banner + avatar uploads (direct to the public-images
@@ -28,6 +35,12 @@ export default function ProfileSettingsPage() {
   const [uploading, setUploading] = useState<"avatar" | "banner" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [cropping, setCropping] = useState<{
+    kind: "avatar" | "banner";
+    src: string;
+    /** Object URLs (fresh file picks) must be revoked when the dialog closes. */
+    isObjectUrl: boolean;
+  } | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -52,11 +65,42 @@ export default function ProfileSettingsPage() {
     })();
   }, []);
 
-  async function pickImage(kind: "avatar" | "banner", file: File | undefined) {
-    if (!file || !profile) return;
+  /** Fresh file pick → open the cropper on a local object URL (no upload yet). */
+  function pickImage(kind: "avatar" | "banner", file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setCropping({ kind, src: URL.createObjectURL(file), isObjectUrl: true });
+  }
+
+  /**
+   * Re-frame the currently stored image. The cache-busting param forces a
+   * fresh CORS-enabled fetch — a plain <img>/CSS-cached response lacks the
+   * CORS headers canvas export needs and would taint it.
+   */
+  function adjustCurrent(kind: "avatar" | "banner") {
+    const url = kind === "avatar" ? profile?.avatar_url : profile?.banner_url;
+    if (!url) return;
+    setError(null);
+    setCropping({
+      kind,
+      src: `${url}${url.includes("?") ? "&" : "?"}crop=${Date.now()}`,
+      isObjectUrl: false,
+    });
+  }
+
+  function closeCropper() {
+    if (cropping?.isObjectUrl) URL.revokeObjectURL(cropping.src);
+    setCropping(null);
+  }
+
+  /** Cropped blob from the dialog → existing upload path (WebP is allowed). */
+  async function uploadCropped(kind: "avatar" | "banner", blob: Blob) {
+    closeCropper();
+    if (!profile) return;
     setUploading(kind);
     setError(null);
     try {
+      const file = new File([blob], `${kind}.webp`, { type: "image/webp" });
       const url = await uploadPublicImage(kind, file, {
         previousUrl: kind === "avatar" ? profile.avatar_url : profile.banner_url,
       });
@@ -142,18 +186,33 @@ export default function ProfileSettingsPage() {
               : { background: "linear-gradient(180deg, #3c3c3c, #030303 64%)" }
           }
         />
-        <label className="mt-3 inline-block">
-          <span className="cursor-pointer text-body-sm text-ink underline underline-offset-2">
-            {uploading === "banner" ? "Uploading…" : "Upload banner"}
-          </span>
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            className="hidden"
-            disabled={uploading !== null}
-            onChange={(e) => pickImage("banner", e.target.files?.[0])}
-          />
-        </label>
+        <div className="mt-3 flex items-center gap-4">
+          <label>
+            <span className="cursor-pointer text-body-sm text-ink underline underline-offset-2">
+              {uploading === "banner" ? "Uploading…" : "Upload banner"}
+            </span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={uploading !== null}
+              onChange={(e) => {
+                pickImage("banner", e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {profile.banner_url && (
+            <button
+              type="button"
+              className="cursor-pointer text-body-sm text-ink-subtle underline underline-offset-2 hover:text-ink"
+              disabled={uploading !== null}
+              onClick={() => adjustCurrent("banner")}
+            >
+              Adjust
+            </button>
+          )}
+        </div>
 
         <div className="mt-8 flex items-center gap-5">
           <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border border-hairline bg-surface-3">
@@ -170,18 +229,33 @@ export default function ProfileSettingsPage() {
               </span>
             )}
           </div>
-          <label>
-            <span className="cursor-pointer text-body-sm text-ink underline underline-offset-2">
-              {uploading === "avatar" ? "Uploading…" : "Upload avatar"}
-            </span>
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              disabled={uploading !== null}
-              onChange={(e) => pickImage("avatar", e.target.files?.[0])}
-            />
-          </label>
+          <div className="flex items-center gap-4">
+            <label>
+              <span className="cursor-pointer text-body-sm text-ink underline underline-offset-2">
+                {uploading === "avatar" ? "Uploading…" : "Upload avatar"}
+              </span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                disabled={uploading !== null}
+                onChange={(e) => {
+                  pickImage("avatar", e.target.files?.[0]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {profile.avatar_url && (
+              <button
+                type="button"
+                className="cursor-pointer text-body-sm text-ink-subtle underline underline-offset-2 hover:text-ink"
+                disabled={uploading !== null}
+                onClick={() => adjustCurrent("avatar")}
+              >
+                Adjust
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-8">
@@ -250,6 +324,16 @@ export default function ProfileSettingsPage() {
           </div>
         </div>
       </Panel>
+
+      {cropping && (
+        <ImageCropDialog
+          title={cropping.kind === "avatar" ? "Adjust avatar" : "Adjust banner"}
+          src={cropping.src}
+          {...CROP_SPECS[cropping.kind]}
+          onConfirm={(blob) => uploadCropped(cropping.kind, blob)}
+          onCancel={closeCropper}
+        />
+      )}
     </div>
   );
 }

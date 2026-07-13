@@ -29,7 +29,7 @@ export type InteractionsApi = {
   postComment: (versionId: string, body: string) => Promise<void>;
 };
 
-const supabaseApi: InteractionsApi = {
+export const defaultInteractionsApi: InteractionsApi = {
   async fetch(versionId) {
     const supabase = createClient();
     const {
@@ -88,7 +88,7 @@ const supabaseApi: InteractionsApi = {
 /** Heart-like + comments for a version. Sign-in required to interact. */
 export function Interactions({
   versionId,
-  api = supabaseApi,
+  api = defaultInteractionsApi,
   signInHref = "/login",
 }: {
   versionId: string;
