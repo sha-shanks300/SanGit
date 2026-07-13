@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/lib/use-project";
+import { uploadPublicImage } from "@/lib/image-upload";
 import type { Version } from "@/lib/database.types";
+import { ProjectArtwork } from "@/components/project-artwork";
 import { TimelineTree } from "@/components/timeline-tree";
 import { VersionGraph } from "@/components/version-graph";
 import { cn } from "@/lib/utils";
@@ -12,6 +14,7 @@ import { VersionPanel } from "@/components/version-panel";
 import { Interactions } from "@/components/interactions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ShareManager } from "@/components/share-manager";
+import { FlpAccess } from "@/components/flp-access";
 import { Eyebrow, Panel, StatusBadge } from "@/components/ui";
 
 /**
@@ -78,23 +81,40 @@ export function ProjectView({
   return (
     <div className="pb-28">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Eyebrow>Project</Eyebrow>
-          <div className="mt-1 flex items-center gap-3">
-            <h1 className="text-headline text-ink">
-              {project.title}
-            </h1>
-            {project.is_public ? (
-              <StatusBadge tone="success">public</StatusBadge>
-            ) : (
-              <StatusBadge>private</StatusBadge>
-            )}
-            <FavoriteButton projectId={project.id} />
+        <div className="flex min-w-0 items-start gap-5">
+          {isOwner ? (
+            <ArtworkUploader
+              projectId={project.id}
+              artworkUrl={project.artwork_url}
+              title={project.title}
+              onChanged={refetch}
+            />
+          ) : (
+            <ProjectArtwork
+              projectId={project.id}
+              artworkUrl={project.artwork_url}
+              title={project.title}
+              className="h-32 w-32 shrink-0 border border-hairline"
+            />
+          )}
+          <div className="min-w-0">
+            <Eyebrow>Project</Eyebrow>
+            <div className="mt-1 flex items-center gap-3">
+              <h1 className="text-headline text-ink">
+                {project.title}
+              </h1>
+              {project.is_public ? (
+                <StatusBadge tone="success">public</StatusBadge>
+              ) : (
+                <StatusBadge>private</StatusBadge>
+              )}
+              <FavoriteButton projectId={project.id} />
+            </div>
+            <p className="mt-1 text-body-sm text-ink-subtle">
+              {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
+              {versions.length} version{versions.length === 1 ? "" : "s"}
+            </p>
           </div>
-          <p className="mt-1 text-body-sm text-ink-subtle">
-            {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
-            {versions.length} version{versions.length === 1 ? "" : "s"}
-          </p>
         </div>
         <div className="flex items-center gap-2">{headerActions}</div>
       </div>
@@ -149,7 +169,10 @@ export function ProjectView({
             onChanged={refetch}
           >
             {isOwner && (
-              <ShareManager versionId={selected.id} projectId={project.id} />
+              <>
+                <ShareManager versionId={selected.id} projectId={project.id} />
+                <FlpAccess projectId={project.id} />
+              </>
             )}
           </VersionPanel>
           <Interactions versionId={selected.id} />
@@ -163,7 +186,86 @@ export function ProjectView({
         mainVersionId={project.main_version_id}
         onSelect={setSelected}
         onSetMain={isOwner ? setMain : undefined}
+        artwork={{
+          projectId: project.id,
+          title: project.title,
+          artworkUrl: project.artwork_url,
+        }}
       />
+    </div>
+  );
+}
+
+/**
+ * Owner-only artwork block: hover (or keyboard focus) reveals an upload
+ * affordance; picking a file reuses the public-images upload flow and writes
+ * `projects.artwork_url` via RLS, then refetches so the new art shows up
+ * everywhere at once.
+ */
+function ArtworkUploader({
+  projectId,
+  artworkUrl,
+  title,
+  onChanged,
+}: {
+  projectId: string;
+  artworkUrl: string | null;
+  title: string;
+  onChanged: () => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const url = await uploadPublicImage("artwork", file, {
+        projectId,
+        previousUrl: artworkUrl,
+      });
+      const supabase = createClient();
+      const { error: dbError } = await supabase
+        .from("projects")
+        .update({ artwork_url: url })
+        .eq("id", projectId);
+      if (dbError) throw new Error(dbError.message);
+      onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed.");
+    }
+    setUploading(false);
+  }
+
+  return (
+    <div className="w-32 shrink-0">
+      <label className="group relative block h-32 w-32 cursor-pointer">
+        <ProjectArtwork
+          projectId={projectId}
+          artworkUrl={artworkUrl}
+          title={title}
+          className="h-full w-full border border-hairline"
+        />
+        <span
+          className={cn(
+            "absolute inset-0 flex items-center justify-center bg-canvas/70 text-button text-ink transition-opacity",
+            uploading
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+          )}
+        >
+          {uploading ? "Uploading…" : artworkUrl ? "Change" : "Upload"}
+        </span>
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="sr-only"
+          disabled={uploading}
+          onChange={(e) => pick(e.target.files?.[0])}
+        />
+      </label>
+      {error && <p className="mt-1 text-caption text-primary">{error}</p>}
     </div>
   );
 }

@@ -17,16 +17,24 @@ export function VersionPanel({
   mainVersionId,
   onChanged,
   children,
+  shareToken,
 }: {
   version: Version;
   isOwner: boolean;
   mainVersionId: string | null;
   onChanged: () => void;
   children?: React.ReactNode;
+  /** Share-link token on /s/[token] pages — passkey downloads need it to prove reachability. */
+  shareToken?: string;
 }) {
   const [name, setName] = useState(version.display_name ?? "");
   const [date, setDate] = useState(version.uploaded_at.slice(0, 10));
   const [saving, setSaving] = useState(false);
+  // Visitor passkey download flow.
+  const [keyOpen, setKeyOpen] = useState(false);
+  const [key, setKey] = useState("");
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   // Reset the form when a different version is selected (adjust-during-render).
   const [prevVersionId, setPrevVersionId] = useState(version.id);
@@ -34,6 +42,7 @@ export function VersionPanel({
     setPrevVersionId(version.id);
     setName(version.display_name ?? "");
     setDate(version.uploaded_at.slice(0, 10));
+    setKeyError(null);
   }
 
   async function save() {
@@ -56,6 +65,27 @@ export function VersionPanel({
   async function downloadFlp() {
     const res = await fetch(`/api/flp/${version.id}`);
     if (!res.ok) return;
+    const { url } = await res.json();
+    window.location.href = url;
+  }
+
+  /** Non-owner path: passkey in the body (never the URL), token when shared. */
+  async function downloadWithKey(e: React.FormEvent) {
+    e.preventDefault();
+    if (!key.trim()) return;
+    setKeyBusy(true);
+    setKeyError(null);
+    const res = await fetch(`/api/flp/${version.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: key.trim(), token: shareToken }),
+    });
+    setKeyBusy(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setKeyError(body?.error ?? "Download failed.");
+      return;
+    }
     const { url } = await res.json();
     window.location.href = url;
   }
@@ -102,6 +132,39 @@ export function VersionPanel({
           </>
         )}
       </dl>
+
+      {!isOwner && (
+        <div className="mt-5 border-t border-hairline pt-5">
+          {keyOpen ? (
+            <form onSubmit={downloadWithKey}>
+              <label className="text-caption text-ink-subtle" htmlFor="flp-key">
+                .flp passkey
+              </label>
+              <div className="mt-1 flex gap-2">
+                <Input
+                  id="flp-key"
+                  className="font-mono"
+                  type="password"
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  placeholder="sgk_…"
+                  autoComplete="off"
+                />
+                <Button type="submit" disabled={keyBusy || !key.trim()}>
+                  {keyBusy ? "Checking…" : "Download"}
+                </Button>
+              </div>
+              {keyError && (
+                <p className="mt-2 text-caption text-primary">{keyError}</p>
+              )}
+            </form>
+          ) : (
+            <Button variant="secondary" onClick={() => setKeyOpen(true)}>
+              Download .flp
+            </Button>
+          )}
+        </div>
+      )}
 
       {isOwner && (
         <div className="mt-5 border-t border-hairline pt-5">
