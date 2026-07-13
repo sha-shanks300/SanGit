@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Project } from "@/lib/database.types";
 import { StatusBadge } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
-import { artworkFallback, formatDate } from "@/lib/utils";
+import { ProjectArtwork } from "@/components/project-artwork";
+import { formatDate } from "@/lib/utils";
 
 export type ProjectRowData = Project & {
   versions?: { count: number }[];
@@ -32,25 +33,12 @@ export function ProjectRow({
       href={href}
       className="flex items-stretch rounded-lg border border-hairline bg-surface-1 transition-colors hover:border-hairline-strong hover:bg-surface-2"
     >
-      <div
-        className="h-24 w-24 shrink-0 overflow-hidden border-r border-hairline"
-        style={
-          project.artwork_url ? undefined : { background: artworkFallback(project.id) }
-        }
-      >
-        {project.artwork_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- Supabase-hosted; remotePatterns not configured for next/image
-          <img
-            src={project.artwork_url}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center text-headline text-ink-muted">
-            {project.title.slice(0, 1).toUpperCase()}
-          </span>
-        )}
-      </div>
+      <ProjectArtwork
+        projectId={project.id}
+        artworkUrl={project.artwork_url}
+        title={project.title}
+        className="h-24 w-24 shrink-0 border-r border-hairline"
+      />
       <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-5 py-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
