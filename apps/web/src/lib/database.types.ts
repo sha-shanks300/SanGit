@@ -92,6 +92,13 @@ export type Comment = {
   created_at: string;
 }
 
+export type ProjectFlpKey = {
+  project_id: string;
+  user_id: string;
+  key_hash: string;
+  created_at: string;
+}
+
 export type ShareLink = {
   id: string;
   user_id: string;
@@ -127,6 +134,7 @@ export type Database = {
       favorites: TableDef<Favorite>;
       comments: TableDef<Comment>;
       share_links: TableDef<ShareLink>;
+      project_flp_keys: TableDef<ProjectFlpKey>;
       link_views: TableDef<{
         id: string;
         share_link_id: string;
