@@ -8,6 +8,7 @@ import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
 import { Interactions, type InteractionsApi } from "@/components/interactions";
 import { SignInPrompt } from "@/components/signin-prompt";
+import { ProjectArtwork } from "@/components/project-artwork";
 import { Eyebrow, Panel, StatusBadge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -84,17 +85,25 @@ export function SharedProjectView({
   return (
     <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10 pb-28">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Eyebrow>Shared project</Eyebrow>
-          <div className="mt-1 flex items-center gap-3">
-            <h1 className="text-headline text-ink">{project.title}</h1>
-            <StatusBadge>private preview</StatusBadge>
+        <div className="flex min-w-0 items-start gap-5">
+          <ProjectArtwork
+            projectId={project.id}
+            artworkUrl={project.artwork_url}
+            title={project.title}
+            className="h-32 w-32 shrink-0 border border-hairline"
+          />
+          <div className="min-w-0">
+            <Eyebrow>Shared project</Eyebrow>
+            <div className="mt-1 flex items-center gap-3">
+              <h1 className="text-headline text-ink">{project.title}</h1>
+              <StatusBadge>private preview</StatusBadge>
+            </div>
+            <p className="mt-1 text-body-sm text-ink-subtle">
+              {ownerName ? `by ${ownerName} · ` : ""}
+              {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
+              {versions.length} version{versions.length === 1 ? "" : "s"}
+            </p>
           </div>
-          <p className="mt-1 text-body-sm text-ink-subtle">
-            {ownerName ? `by ${ownerName} · ` : ""}
-            {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
-            {versions.length} version{versions.length === 1 ? "" : "s"}
-          </p>
         </div>
       </div>
 
@@ -146,6 +155,7 @@ export function SharedProjectView({
             isOwner={false}
             mainVersionId={project.main_version_id}
             onChanged={() => {}}
+            shareToken={token}
           />
           <Interactions
             versionId={selected.id}
@@ -162,6 +172,12 @@ export function SharedProjectView({
         mainVersionId={project.main_version_id}
         onSelect={setSelected}
         audioUrlFor={(id) => `/api/listen/${token}/audio/${id}`}
+        artwork={{
+          projectId: project.id,
+          title: project.title,
+          artworkUrl: project.artwork_url,
+        }}
+        interactionsApi={tokenApi}
       />
 
       <SignInPrompt next={`/s/${token}`} />
