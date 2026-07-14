@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { uploadPublicImage } from "@/lib/image-upload";
 import { artworkFallback, cn } from "@/lib/utils";
 import { Button, Input } from "@/components/ui";
+import { DeleteProjectDialog } from "@/components/delete-project-dialog";
 
 /** Owner header controls: rename, toggle public visibility, artwork. */
 export function ProjectSettings({
@@ -48,6 +49,7 @@ export function ProjectSettings({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function save() {
     setSaving(true);
@@ -159,7 +161,26 @@ export function ProjectSettings({
               {saving ? "Saving…" : "Save"}
             </Button>
           </div>
+
+          <div className="mt-4 border-t border-hairline pt-4">
+            <button
+              type="button"
+              className="w-full cursor-pointer border border-hairline-strong px-4 py-2 text-button text-primary transition-colors hover:border-primary hover:bg-surface-2"
+              onClick={() => {
+                setOpen(false);
+                setConfirmingDelete(true);
+              }}
+            >
+              Delete project…
+            </button>
+          </div>
         </div>
+      )}
+      {confirmingDelete && (
+        <DeleteProjectDialog
+          project={project}
+          onClose={() => setConfirmingDelete(false)}
+        />
       )}
     </div>
   );

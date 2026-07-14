@@ -11,6 +11,8 @@ import { VersionGraph } from "@/components/version-graph";
 import { cn } from "@/lib/utils";
 import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
+import { VersionContextMenu } from "@/components/version-context-menu";
+import { DeleteVersionDialog } from "@/components/delete-version-dialog";
 import { Interactions } from "@/components/interactions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ShareManager } from "@/components/share-manager";
@@ -35,6 +37,10 @@ export function ProjectView({
     useProject(projectId);
   const [selected, setSelected] = useState<Version | null>(null);
   const [view, setView] = useState<"tree" | "graph">("tree");
+  const [menu, setMenu] = useState<{ version: Version; x: number; y: number } | null>(
+    null
+  );
+  const [deleting, setDeleting] = useState<Version | null>(null);
 
   useEffect(() => {
     if (localStorage.getItem("sangit-timeline-view") === "graph")
@@ -64,6 +70,18 @@ export function ProjectView({
       .from("projects")
       .update({ main_version_id: v.id })
       .eq("id", projectId);
+    refetch();
+  }
+
+  /** After a delete, move selection to the chronologically previous version
+   *  (versions arrive sorted by uploaded_at), falling back forward, then none. */
+  function onVersionDeleted(deleted: Version) {
+    if (selected?.id === deleted.id) {
+      const i = versions.findIndex((v) => v.id === deleted.id);
+      const next = versions[i - 1] ?? versions[i + 1] ?? null;
+      setSelected(next);
+    }
+    setDeleting(null);
     refetch();
   }
 
@@ -148,6 +166,9 @@ export function ProjectView({
             mainVersionId={project.main_version_id}
             selectedId={selected?.id ?? null}
             onSelect={setSelected}
+            onNodeContextMenu={
+              isOwner ? (v, x, y) => setMenu({ version: v, x, y }) : undefined
+            }
           />
         ) : (
           <TimelineTree
@@ -156,9 +177,38 @@ export function ProjectView({
             mainVersionId={project.main_version_id}
             selectedId={selected?.id ?? null}
             onSelect={setSelected}
+            onNodeContextMenu={
+              isOwner ? (v, x, y) => setMenu({ version: v, x, y }) : undefined
+            }
           />
         )}
       </Panel>
+
+      {menu && (
+        <VersionContextMenu
+          x={menu.x}
+          y={menu.y}
+          isMain={menu.version.id === project.main_version_id}
+          onSetMain={() => setMain(menu.version)}
+          onDelete={() => setDeleting(menu.version)}
+          onClose={() => setMenu(null)}
+        />
+      )}
+
+      {deleting && (
+        <DeleteVersionDialog
+          version={deleting}
+          isMain={deleting.id === project.main_version_id}
+          isLastOnBranch={
+            versions.filter((v) => v.branch_id === deleting.branch_id).length === 1
+          }
+          branchName={
+            branches.find((b) => b.id === deleting.branch_id)?.name ?? "this branch"
+          }
+          onClose={() => setDeleting(null)}
+          onDeleted={() => onVersionDeleted(deleting)}
+        />
+      )}
 
       {selected && (
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -167,6 +217,7 @@ export function ProjectView({
             isOwner={isOwner}
             mainVersionId={project.main_version_id}
             onChanged={refetch}
+            onRequestDelete={isOwner ? () => setDeleting(selected) : undefined}
           >
             {isOwner && (
               <>
