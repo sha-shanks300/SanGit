@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Branch, Version } from "@/lib/database.types";
 import { cn } from "@/lib/utils";
 
@@ -131,17 +131,39 @@ export function TimelineTree({
   mainVersionId,
   selectedId,
   onSelect,
+  onNodeContextMenu,
 }: {
   branches: Branch[];
   versions: Version[];
   mainVersionId: string | null;
   selectedId: string | null;
   onSelect: (version: Version) => void;
+  /** Owner-only right-click on a node (viewport coordinates). */
+  onNodeContextMenu?: (version: Version, x: number, y: number) => void;
 }) {
   const layout = useMemo(
     () => computeLayout(branches, versions),
     [branches, versions]
   );
+
+  // Reflow animation: nodes slide to their recomputed spots via the CSS
+  // transition on each <g> transform, while versions that just disappeared
+  // linger as "ghosts" at their old positions and shrink/fade out. The
+  // previous layout is held in state (adjust-during-render) so ghost
+  // positions are known at the moment a version vanishes.
+  const [prevLayout, setPrevLayout] = useState(layout);
+  const [ghosts, setGhosts] = useState<NodePos[]>([]);
+  if (prevLayout !== layout) {
+    setPrevLayout(layout);
+    const currentIds = new Set(versions.map((v) => v.id));
+    const removed = prevLayout.nodes.filter((n) => !currentIds.has(n.version.id));
+    if (removed.length > 0) setGhosts(removed);
+  }
+  useEffect(() => {
+    if (ghosts.length === 0) return;
+    const t = setTimeout(() => setGhosts([]), 400);
+    return () => clearTimeout(t);
+  }, [ghosts]);
 
   const mainLane = useMemo(() => {
     const main = versions.find((v) => v.id === mainVersionId);
@@ -189,26 +211,61 @@ export function TimelineTree({
           role="list"
           aria-label="Version timeline"
         >
-          {/* lane wave paths (single-node lanes need no line) */}
+          {/* lane wave paths (single-node lanes need no line) — keyed by
+              shape so a reflow swaps in a fresh path that fades in while the
+              dots slide (path `d` strings can't tween in CSS). */}
           {layout.waves.map(({ lane, d }) => (
             <path
-              key={lane}
+              key={`${lane}:${d}`}
               d={d}
               fill="none"
               stroke={lane === mainLane ? "var(--hairline-tertiary)" : "var(--hairline)"}
               strokeWidth={2}
+              className="animate-tree-fade-in"
             />
           ))}
 
           {/* fork connectors */}
           {layout.forks.map((f, i) => (
             <path
-              key={i}
+              key={`${i}:${f.fromX},${f.fromY},${f.toX},${f.toY}`}
               d={`M ${f.fromX} ${f.fromY} C ${f.fromX + 28} ${f.fromY}, ${f.toX - 28} ${f.toY}, ${f.toX} ${f.toY}`}
               fill="none"
               stroke="var(--hairline-strong)"
               strokeWidth={2}
+              className="animate-tree-fade-in"
             />
+          ))}
+
+          {/* exiting nodes: shrink and fade at their old spot, then unmount */}
+          {ghosts.map(({ version: v, x, y, label }) => (
+            <g
+              key={`ghost-${v.id}`}
+              aria-hidden
+              className="pointer-events-none"
+              style={{ transform: `translate(${x}px, ${y}px)` }}
+            >
+              <g
+                className="animate-tree-node-exit"
+                style={{ transformBox: "fill-box", transformOrigin: "center" }}
+              >
+                <circle
+                  r={NODE_R}
+                  fill="var(--surface-4)"
+                  stroke="var(--hairline-tertiary)"
+                  strokeWidth={1.5}
+                />
+                <text
+                  y={NODE_R + 16}
+                  textAnchor="middle"
+                  className="font-mono"
+                  fill="var(--ink-subtle)"
+                  fontSize={10}
+                >
+                  {label}
+                </text>
+              </g>
+            </g>
           ))}
 
           {/* version nodes */}
@@ -223,7 +280,19 @@ export function TimelineTree({
                 key={v.id}
                 role="listitem"
                 className="cursor-pointer"
+                style={{
+                  transform: `translate(${x}px, ${y}px)`,
+                  transition: "transform 300ms ease",
+                }}
                 onClick={() => onSelect(v)}
+                onContextMenu={
+                  onNodeContextMenu
+                    ? (e) => {
+                        e.preventDefault();
+                        onNodeContextMenu(v, e.clientX, e.clientY);
+                      }
+                    : undefined
+                }
               >
                 <title>
                   {(v.display_name || v.file_name) +
@@ -232,8 +301,6 @@ export function TimelineTree({
                 </title>
                 {isMain && (
                   <circle
-                    cx={x}
-                    cy={y}
                     r={NODE_R + 5}
                     fill="none"
                     stroke="var(--primary)"
@@ -241,8 +308,6 @@ export function TimelineTree({
                   />
                 )}
                 <circle
-                  cx={x}
-                  cy={y}
                   r={NODE_R}
                   fill={
                     isSelected
@@ -264,8 +329,7 @@ export function TimelineTree({
                 />
                 {isMain && (
                   <text
-                    x={x}
-                    y={y - NODE_R - 12}
+                    y={-NODE_R - 12}
                     textAnchor="middle"
                     fill="var(--primary)"
                     fontSize={10}
@@ -275,8 +339,7 @@ export function TimelineTree({
                   </text>
                 )}
                 <text
-                  x={x}
-                  y={y + NODE_R + 16}
+                  y={NODE_R + 16}
                   textAnchor="middle"
                   className="font-mono"
                   fill={isSelected ? "var(--ink)" : "var(--ink-subtle)"}

@@ -129,3 +129,25 @@ h3 {
 .cta-hover-gradient:hover {
   background: linear-gradient(180deg, #a00c01, #da291c 64%);
 }
+
+/* Timeline tree reflow (delete version): swapped-in paths fade in while a
+   deleted node's ghost shrinks away at its old position. Registered as
+   --animate-* tokens because Tailwind v4 tree-shakes keyframes it never sees
+   referenced by a scanned utility class (inline style strings don't count). */
+@theme {
+  --animate-tree-fade-in: tree-fade-in 300ms ease;
+  --animate-tree-node-exit: tree-node-exit 320ms ease forwards;
+
+  @keyframes tree-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes tree-node-exit {
+    to {
+      opacity: 0;
+      transform: scale(0.4);
+    }
+  }
+}
