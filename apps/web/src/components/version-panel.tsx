@@ -18,6 +18,7 @@ export function VersionPanel({
   onChanged,
   children,
   shareToken,
+  onRequestDelete,
 }: {
   version: Version;
   isOwner: boolean;
@@ -26,6 +27,8 @@ export function VersionPanel({
   children?: React.ReactNode;
   /** Share-link token on /s/[token] pages — passkey downloads need it to prove reachability. */
   shareToken?: string;
+  /** Owner-only: opens the delete-version confirmation (dialog lives in the parent). */
+  onRequestDelete?: () => void;
 }) {
   const [name, setName] = useState(version.display_name ?? "");
   const [date, setDate] = useState(version.uploaded_at.slice(0, 10));
@@ -191,6 +194,15 @@ export function VersionPanel({
             <Button variant="secondary" onClick={downloadFlp}>
               Download .flp
             </Button>
+            {onRequestDelete && (
+              <button
+                type="button"
+                className="ml-auto cursor-pointer border border-hairline-strong px-4 py-2 text-button text-primary transition-colors hover:border-primary hover:bg-surface-1"
+                onClick={onRequestDelete}
+              >
+                Delete…
+              </button>
+            )}
           </div>
         </div>
       )}

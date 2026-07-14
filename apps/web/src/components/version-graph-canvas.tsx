@@ -65,6 +65,8 @@ export type VersionGraphProps = {
   mainVersionId: string | null;
   selectedId: string | null;
   onSelect: (version: Version) => void;
+  /** Owner-only right-click on a node (viewport coordinates). */
+  onNodeContextMenu?: (version: Version, x: number, y: number) => void;
 };
 
 /**
@@ -82,6 +84,7 @@ export default function VersionGraphCanvas({
   mainVersionId,
   selectedId,
   onSelect,
+  onNodeContextMenu,
 }: VersionGraphProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const fgRef = useRef<
@@ -161,6 +164,18 @@ export default function VersionGraphCanvas({
             n.fy = undefined;
           }}
           onNodeClick={(node) => onSelect((node as SimNode).version)}
+          onNodeRightClick={
+            onNodeContextMenu
+              ? (node, event) => {
+                  event.preventDefault();
+                  onNodeContextMenu(
+                    (node as SimNode).version,
+                    event.clientX,
+                    event.clientY
+                  );
+                }
+              : undefined
+          }
           onNodeHover={(node) => {
             const n = node as SimNode | null;
             setHover(

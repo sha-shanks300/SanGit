@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/database.types";
 import { uploadPublicImage } from "@/lib/image-upload";
 import { ImageCropDialog } from "@/components/image-crop-dialog";
+import { DeleteAccountDialog } from "@/components/delete-account-dialog";
 import { Button, Eyebrow, Input, Panel } from "@/components/ui";
 
 /** Crop mask + baked output size per image kind — matches how the UI renders. */
@@ -41,6 +42,7 @@ export default function ProfileSettingsPage() {
     /** Object URLs (fresh file picks) must be revoked when the dialog closes. */
     isObjectUrl: boolean;
   } | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -324,6 +326,27 @@ export default function ProfileSettingsPage() {
           </div>
         </div>
       </Panel>
+
+      <Panel className="mt-6">
+        <Eyebrow>Danger zone</Eyebrow>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
+          <p className="text-body-sm text-ink-subtle">
+            Permanently delete your account, every project and version, and all
+            uploaded files. Local .flp files are untouched.
+          </p>
+          <button
+            type="button"
+            className="cursor-pointer border border-hairline-strong px-4 py-2 text-button text-primary transition-colors hover:border-primary hover:bg-surface-2"
+            onClick={() => setConfirmingDelete(true)}
+          >
+            Delete account…
+          </button>
+        </div>
+      </Panel>
+
+      {confirmingDelete && (
+        <DeleteAccountDialog onClose={() => setConfirmingDelete(false)} />
+      )}
 
       {cropping && (
         <ImageCropDialog
