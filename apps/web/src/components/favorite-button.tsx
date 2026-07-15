@@ -12,9 +12,12 @@ import { cn } from "@/lib/utils";
 export function FavoriteButton({
   projectId,
   compact,
+  bare,
 }: {
   projectId: string;
   compact?: boolean;
+  /** Borderless icon style for the now-playing sheet's action row. */
+  bare?: boolean;
 }) {
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [count, setCount] = useState(0);
@@ -67,19 +70,24 @@ export function FavoriteButton({
       onClick={toggle}
       disabled={!viewerId}
       className={cn(
-        "flex items-center gap-1.5 rounded-md border text-body-sm transition-colors disabled:opacity-50",
-        compact ? "px-2 py-1" : "px-3 py-1.5",
-        mine
-          ? "border-hairline-tertiary bg-surface-3 text-ink"
-          : "border-hairline bg-surface-1 text-ink-subtle hover:text-ink"
+        "flex items-center gap-1.5 text-body-sm transition-colors disabled:opacity-50",
+        bare
+          ? cn("p-2", mine ? "text-ink" : "text-ink-subtle")
+          : cn(
+              "rounded-md border",
+              compact ? "px-2 py-1" : "px-3 py-1.5",
+              mine
+                ? "border-hairline-tertiary bg-surface-3 text-ink"
+                : "border-hairline bg-surface-1 text-ink-subtle hover:text-ink"
+            )
       )}
       aria-label={mine ? "Remove from favourites" : "Add to favourites"}
       aria-pressed={mine}
       title={mine ? "Remove from favourites" : "Add to favourites"}
     >
       <svg
-        width="14"
-        height="14"
+        width={bare ? 18 : 14}
+        height={bare ? 18 : 14}
         viewBox="0 0 16 16"
         fill={mine ? "currentColor" : "none"}
         stroke="currentColor"
