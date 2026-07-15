@@ -26,6 +26,7 @@ import theme
 from api_client import ApiClient, ApiError
 from popup import PopupManager
 from render_queue import RenderWorker
+from status_window import StatusWindow
 from uploader import UploadWorker
 from watcher import FolderWatcher
 
@@ -79,6 +80,8 @@ class App(QObject):
                                      debounce_secs=cfg["debounce_secs"])
         self.watching = True
         self.tray: QSystemTrayIcon | None = None
+        self.status_window: StatusWindow | None = None
+        self._watch_action: QAction | None = None
         self._settings_open = False
         self._auth_alerted = False
 
@@ -108,7 +111,43 @@ class App(QObject):
             self.watcher.start()  # otherwise run() starts it
         store.requeue_errored_commits()
         self._auth_alerted = False
+        if self.status_window:  # folder list may have changed — rebuild lazily
+            self.status_window.close()
+            self.status_window = None
         log.info("settings applied; watching %s", cfg["watch_folders"])
+
+    # ---- watch toggle (single source of truth) ----
+    def set_watching(self, on: bool):
+        """Flip the soft-pause flag and mirror it everywhere: tray menu
+        checkbox, status window toggle, tray icon (dimmed while paused).
+        Always resets to ON at launch — a forgotten pause must not silently
+        eat saves."""
+        if self.watching == on:
+            return
+        self.watching = on
+        if self._watch_action and self._watch_action.isChecked() != on:
+            self._watch_action.blockSignals(True)
+            self._watch_action.setChecked(on)
+            self._watch_action.blockSignals(False)
+        if self.status_window:
+            self.status_window.sync_state(on)
+        if self.tray:
+            self.tray.setIcon(theme.app_icon() if on else theme.app_icon_dimmed())
+            self.tray.setToolTip("SanGit" if on else "SanGit — paused")
+        log.info("watching %s", "resumed" if on else "paused")
+
+    def open_status(self):
+        """Left-click on the tray icon (or 'Open SanGit') — the status
+        window with the watch toggle."""
+        if self.status_window is None:
+            self.status_window = StatusWindow(
+                is_watching=lambda: self.watching,
+                set_watching=self.set_watching,
+                status_text=self._status_text,
+                folders=self.cfg["watch_folders"])
+        self.status_window.show()
+        self.status_window.raise_()
+        self.status_window.activateWindow()
 
     def open_settings(self):
         """Tray 'Settings…' — change folder, URL, FL path, or re-pair."""
@@ -165,6 +204,9 @@ class App(QObject):
         menu = QMenu()
         menu.setFont(theme.font("body", 9))
 
+        menu.addAction("Open SanGit", self.open_status)
+        menu.addSeparator()
+
         self._status_action = QAction("", menu)
         self._status_action.setEnabled(False)
         menu.addAction(self._status_action)
@@ -175,8 +217,9 @@ class App(QObject):
         watch = QAction("Watching for saves", menu)
         watch.setCheckable(True)
         watch.setChecked(True)
-        watch.toggled.connect(lambda on: setattr(self, "watching", on))
+        watch.toggled.connect(self.set_watching)
         menu.addAction(watch)
+        self._watch_action = watch
 
         menu.addAction("Render queue now",
                        lambda: self.renderer.render_now())
@@ -189,8 +232,13 @@ class App(QObject):
         self.tray = QSystemTrayIcon(theme.app_icon())
         self.tray.setToolTip("SanGit")
         self.tray.setContextMenu(menu)
+        self.tray.activated.connect(self._on_tray_activated)
         self._menu = menu  # keep alive
         self.tray.show()
+
+    def _on_tray_activated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # left-click
+            self.open_status()
 
     def _install_ctrl_handler(self):
         """Make Ctrl+C (and closing the terminal) stop the service: a

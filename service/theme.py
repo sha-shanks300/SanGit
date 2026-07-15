@@ -163,6 +163,18 @@ def app_icon() -> QIcon:
     return QIcon(_drawn_mark(256))
 
 
+def app_icon_dimmed() -> QIcon:
+    """Faded variant of the mark for the tray while watching is paused."""
+    pm = app_icon().pixmap(256, 256)
+    out = QPixmap(pm.size())
+    out.fill(Qt.GlobalColor.transparent)
+    p = QPainter(out)
+    p.setOpacity(0.35)
+    p.drawPixmap(0, 0, pm)
+    p.end()
+    return QIcon(out)
+
+
 def _drawn_mark(size: int) -> QPixmap:
     """Vector fallback of the mark — the beamed double eighth-note commit
     graph (same geometry as the web app's LogoMark)."""
