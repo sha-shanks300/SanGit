@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Version } from "@/lib/database.types";
 import { Button, StatusBadge } from "@/components/ui";
 import { ProjectArtwork } from "@/components/project-artwork";
+import { FavoriteButton } from "@/components/favorite-button";
 import {
   defaultInteractionsApi,
   type InteractionsApi,
@@ -37,6 +38,7 @@ export function PlayerBar({
   extraControls,
   artwork,
   interactionsApi = defaultInteractionsApi,
+  favoriteProjectId,
 }: {
   version: Version | null;
   versions: Version[];
@@ -49,6 +51,9 @@ export function PlayerBar({
   artwork?: PlayerArtwork;
   /** Like backend for the now-playing sheet (token routes on share pages). */
   interactionsApi?: InteractionsApi;
+  /** Visitor star on the sheet favorites this project (RLS path — omit on
+   *  token share pages, where favorites have no token route). */
+  favoriteProjectId?: string;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -369,19 +374,39 @@ export function PlayerBar({
             )}
 
             <div className="w-full max-w-[400px]">
-              <div className="flex items-center justify-center gap-2">
-                <p className="truncate text-card-title text-ink">
-                  {version.display_name || version.file_name}
-                </p>
-                {version.id === mainVersionId && (
-                  <StatusBadge tone="accent">Main</StatusBadge>
-                )}
-                {version.render_status === "pending" ||
-                version.render_status === "rendering" ? (
-                  <StatusBadge tone="processing">processing</StatusBadge>
-                ) : version.render_status === "failed" ? (
-                  <StatusBadge>render failed</StatusBadge>
-                ) : null}
+              {/* Anchored title row: track info left, borderless actions
+                  (heart + role-dependent second icon) right. */}
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <p className="truncate text-card-title text-ink">
+                    {version.display_name || version.file_name}
+                  </p>
+                  {version.id === mainVersionId && (
+                    <StatusBadge tone="accent" className="shrink-0">
+                      Main
+                    </StatusBadge>
+                  )}
+                  {version.render_status === "pending" ||
+                  version.render_status === "rendering" ? (
+                    <StatusBadge tone="processing" className="shrink-0">
+                      processing
+                    </StatusBadge>
+                  ) : version.render_status === "failed" ? (
+                    <StatusBadge className="shrink-0">render failed</StatusBadge>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center">
+                  <LikeHeart versionId={version.id} api={interactionsApi} />
+                  {isOwner && onSetMain ? (
+                    <MainToggle
+                      version={version}
+                      mainVersionId={mainVersionId}
+                      onSetMain={onSetMain}
+                    />
+                  ) : favoriteProjectId ? (
+                    <FavoriteButton projectId={favoriteProjectId} bare />
+                  ) : null}
+                </div>
               </div>
 
               <div className="mt-6 flex items-center gap-2">
@@ -447,14 +472,6 @@ export function PlayerBar({
                 </button>
               </div>
 
-              <div className="mt-8 flex items-center justify-center gap-3">
-                <LikeHeart versionId={version.id} api={interactionsApi} />
-                {isOwner && onSetMain && version.id !== mainVersionId && (
-                  <Button variant="secondary" onClick={() => onSetMain(version)}>
-                    Set as Main
-                  </Button>
-                )}
-              </div>
             </div>
           </div>
         </div>
@@ -503,15 +520,13 @@ function LikeHeart({
       aria-pressed={mine}
       aria-label={mine ? "Unlike" : "Like"}
       className={cn(
-        "flex items-center gap-2 rounded-md border px-4 py-2.5 text-body-sm transition-colors disabled:opacity-50",
-        mine
-          ? "border-hairline-tertiary bg-surface-3 text-ink"
-          : "border-hairline text-ink-subtle"
+        "flex items-center gap-1.5 p-2 text-body-sm transition-colors disabled:opacity-50",
+        mine ? "text-ink" : "text-ink-subtle"
       )}
     >
       <svg
-        width="16"
-        height="16"
+        width="18"
+        height="18"
         viewBox="0 0 16 16"
         fill={mine ? "currentColor" : "none"}
         stroke="currentColor"
@@ -520,6 +535,47 @@ function LikeHeart({
         <path d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z" />
       </svg>
       {likes}
+    </button>
+  );
+}
+
+/**
+ * Owner-only Main toggle for the sheet's action row: ring/target icon echoing
+ * the tree's Main halo. Always visible; selected (filled, Rosso red) when the
+ * playing version is already Main — tapping then is a no-op, so the state
+ * can't be un-set from here.
+ */
+function MainToggle({
+  version,
+  mainVersionId,
+  onSetMain,
+}: {
+  version: Version;
+  mainVersionId: string | null;
+  onSetMain: (v: Version) => void;
+}) {
+  const isMain = version.id === mainVersionId;
+  return (
+    <button
+      onClick={() => !isMain && onSetMain(version)}
+      aria-pressed={isMain}
+      aria-label={isMain ? "Current Main version" : "Set as Main"}
+      className={cn(
+        "p-2 transition-colors",
+        isMain ? "text-primary" : "text-ink-subtle"
+      )}
+    >
+      <svg
+        width="18"
+        height="18"
+        viewBox="0 0 18 18"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      >
+        <circle cx="9" cy="9" r="6.5" />
+        <circle cx="9" cy="9" r="2.5" fill={isMain ? "currentColor" : "none"} />
+      </svg>
     </button>
   );
 }
