@@ -17,7 +17,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 /**
  * Draw the selected region to an offscreen canvas at a fixed output size and
- * export WebP. Baking the crop (instead of storing focal-point metadata)
+ * export JPEG. Baking the crop (instead of storing focal-point metadata)
  * keeps one stored file that displays consistently everywhere, and the fixed
  * output size downscales oversized photos below the upload cap for free.
  */
@@ -47,7 +47,9 @@ async function cropToBlob(
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error("Couldn't export the crop."))),
-      "image/webp",
+      // JPEG, not WebP: satori (OG unfurl cards) can't decode WebP, and these
+      // crops are exactly the images the cards want to show.
+      "image/jpeg",
       0.9
     );
   });
@@ -57,7 +59,7 @@ async function cropToBlob(
  * Modal pan/zoom cropper (react-easy-crop). The mask is locked to the shape
  * the UI actually renders — circle for avatars, wide rect for banners — so
  * the preview matches the final display exactly. Confirm bakes the crop to a
- * `{outWidth}×{outHeight}` WebP blob and hands it back; Cancel hands back
+ * `{outWidth}×{outHeight}` JPEG blob and hands it back; Cancel hands back
  * nothing and the caller uploads nothing.
  */
 export function ImageCropDialog({
