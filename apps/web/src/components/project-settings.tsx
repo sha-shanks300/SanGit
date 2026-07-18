@@ -8,7 +8,7 @@ import { artworkFallback, cn } from "@/lib/utils";
 import { Button, Input } from "@/components/ui";
 import { DeleteProjectDialog } from "@/components/delete-project-dialog";
 
-/** Owner header controls: rename, toggle public visibility, artwork. */
+/** Owner header controls: rename, profile visibility, artwork. */
 export function ProjectSettings({
   project,
 }: {
@@ -17,6 +17,8 @@ export function ProjectSettings({
     title: string;
     slug: string;
     is_public: boolean;
+    show_history: boolean;
+    main_version_id: string | null;
     artwork_url: string | null;
   };
 }) {
@@ -45,6 +47,7 @@ export function ProjectSettings({
   }, [open]);
   const [title, setTitle] = useState(project.title);
   const [isPublic, setIsPublic] = useState(project.is_public);
+  const [showHistory, setShowHistory] = useState(project.show_history);
   const [artworkUrl, setArtworkUrl] = useState(project.artwork_url);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -56,7 +59,11 @@ export function ProjectSettings({
     const supabase = createClient();
     await supabase
       .from("projects")
-      .update({ title: title.trim() || project.title, is_public: isPublic })
+      .update({
+        title: title.trim() || project.title,
+        is_public: isPublic,
+        show_history: showHistory,
+      })
       .eq("id", project.id);
     setSaving(false);
     setOpen(false);
@@ -131,9 +138,9 @@ export function ProjectSettings({
           {error && <p className="mt-2 text-caption text-primary">{error}</p>}
 
           <div className="mt-4 flex items-center justify-between">
-            <span className="text-body-sm text-ink">Public project page</span>
+            <span className="text-body-sm text-ink">Show on profile</span>
             {/* Toggle button: stays pressed (surface lift + green) while
-                public; pressing again releases it back to private. */}
+                shown; pressing again releases it back to private. */}
             <button
               type="button"
               aria-pressed={isPublic}
@@ -145,13 +152,36 @@ export function ProjectSettings({
                   : "border-hairline text-ink-subtle hover:text-ink"
               )}
             >
-              {isPublic ? "Public" : "Private"}
+              {isPublic ? "Shown" : "Hidden"}
             </button>
           </div>
           {isPublic && (
-            <p className="mt-2 text-caption text-ink-tertiary">
-              Visible at /p/{project.slug}
-            </p>
+            <>
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-body-sm text-ink">Show version history</span>
+                <button
+                  type="button"
+                  aria-pressed={showHistory}
+                  onClick={() => setShowHistory((h) => !h)}
+                  className={cn(
+                    "cursor-pointer border px-3.5 py-1.5 text-button transition-colors",
+                    showHistory
+                      ? "border-hairline-strong bg-surface-2 text-success"
+                      : "border-hairline text-ink-subtle hover:text-ink"
+                  )}
+                >
+                  {showHistory ? "Full tree" : "Main only"}
+                </button>
+              </div>
+              <p className="mt-2 text-caption text-ink-tertiary">
+                Visible at /p/{project.slug}
+                {showHistory
+                  ? " — visitors see every version and the tree"
+                  : " — visitors hear one track only"}
+                {!project.main_version_id &&
+                  ". No Main set: visitors hear your latest version until you pick one"}
+              </p>
+            </>
           )}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="tertiary" onClick={() => setOpen(false)}>

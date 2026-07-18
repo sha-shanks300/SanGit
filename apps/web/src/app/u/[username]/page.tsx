@@ -1,9 +1,45 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getPublicProfile } from "@/lib/public-project";
 import { TopNav } from "@/components/top-nav";
 import { Eyebrow } from "@/components/ui";
 import { ProfileHeader } from "@/components/profile-header";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}): Promise<Metadata> {
+  const { username } = await params;
+  const data = await getPublicProfile(username);
+  // Unlisted model: reachable by link, never by search engine.
+  if (!data) return { robots: { index: false, follow: false } };
+  const { profile, publicProjects } = data;
+  const name = profile.display_name || profile.username;
+  const title = `${name} (@${profile.username})`;
+  const description =
+    profile.bio ||
+    `${name} shares music in progress on SanGit${
+      publicProjects > 0
+        ? ` — ${publicProjects} project${publicProjects === 1 ? "" : "s"}`
+        : ""
+    }.`;
+  return {
+    title,
+    description,
+    robots: { index: false, follow: false },
+    openGraph: {
+      title,
+      description,
+      type: "profile",
+      siteName: "SanGit",
+      url: `/u/${profile.username}`,
+    },
+    twitter: { card: "summary_large_image", title, description },
+  };
+}
 
 export default async function ProfilePage({
   params,

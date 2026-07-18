@@ -39,6 +39,7 @@ export type Project = {
   slug: string;
   main_version_id: string | null;
   is_public: boolean;
+  show_history: boolean;
   artwork_url: string | null;
   created_at: string;
   updated_at: string;
