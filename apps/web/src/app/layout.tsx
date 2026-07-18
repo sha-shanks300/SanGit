@@ -18,7 +18,12 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SanGit",
+  // Absolute base for OG/twitter URLs; works at whatever address is deployed.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  title: {
+    default: "SanGit",
+    template: "%s · SanGit",
+  },
   description: "Version control for music projects",
 };
 
