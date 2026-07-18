@@ -95,14 +95,15 @@ export default function ProfileSettingsPage() {
     setCropping(null);
   }
 
-  /** Cropped blob from the dialog → existing upload path (WebP is allowed). */
+  /** Cropped blob from the dialog → existing upload path (JPEG — the OG
+   *  unfurl cards can't draw WebP). */
   async function uploadCropped(kind: "avatar" | "banner", blob: Blob) {
     closeCropper();
     if (!profile) return;
     setUploading(kind);
     setError(null);
     try {
-      const file = new File([blob], `${kind}.webp`, { type: "image/webp" });
+      const file = new File([blob], `${kind}.jpg`, { type: "image/jpeg" });
       const url = await uploadPublicImage(kind, file, {
         previousUrl: kind === "avatar" ? profile.avatar_url : profile.banner_url,
       });
