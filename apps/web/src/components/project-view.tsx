@@ -237,6 +237,7 @@ export function ProjectView({
         mainVersionId={project.main_version_id}
         onSelect={setSelected}
         onSetMain={isOwner ? setMain : undefined}
+        favoriteProjectId={isOwner ? undefined : project.id}
         artwork={{
           projectId: project.id,
           title: project.title,
