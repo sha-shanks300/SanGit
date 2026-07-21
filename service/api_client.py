@@ -11,6 +11,24 @@ class ApiError(Exception):
         self.retryable = retryable
 
 
+def _error_detail(resp) -> str:
+    """A short, human-readable message for a 4xx/5xx. Only trusts a JSON
+    `error` field — an HTML body (e.g. a 404 page from a missing route on an
+    outdated deployment) would otherwise dump markup into the UI, so we show
+    an actionable hint instead."""
+    if "application/json" in resp.headers.get("content-type", ""):
+        try:
+            detail = resp.json().get("error")
+            if detail:
+                return f"{resp.status_code}: {detail}"
+        except ValueError:
+            pass
+    if resp.status_code == 404:
+        return ("404 — endpoint not found. The web app may be an older "
+                "version; check the URL and that it's up to date.")
+    return f"{resp.status_code}: server returned a non-JSON response."
+
+
 class ApiClient:
     def __init__(self, api_url: str, device_token: str = ""):
         self.api_url = api_url.rstrip("/")
@@ -26,11 +44,7 @@ class ApiClient:
         except requests.RequestException as e:
             raise ApiError(f"network error: {e}") from e
         if resp.status_code >= 400:
-            try:
-                detail = resp.json().get("error", resp.text[:200])
-            except ValueError:
-                detail = resp.text[:200]
-            raise ApiError(f"{resp.status_code}: {detail}", status=resp.status_code,
+            raise ApiError(_error_detail(resp), status=resp.status_code,
                            retryable=resp.status_code >= 500)
         return resp.json()
 
@@ -49,6 +63,12 @@ class ApiClient:
                            status=resp.status_code,
                            retryable=resp.status_code >= 500)
         return resp.json()
+
+    def preview(self, code: str) -> dict:
+        """Resolve a pairing code to its owner's username WITHOUT claiming it,
+        so the user can confirm the account before the device is created."""
+        return self._post("/api/devices/pair/preview", {"code": code},
+                          authed=False)
 
     def pair(self, code: str, device_name: str) -> dict:
         return self._post("/api/devices/pair",

@@ -68,6 +68,17 @@ def font(tier: str, size_pt: int, letter_spacing: float = 0.0) -> QFont:
     return f
 
 
+def symbol_font(size_pt: int) -> QFont:
+    """Font for glyph icons (⚙ etc.). Prefer the monochrome Segoe UI Symbol
+    so QSS `color` recolors it on hover; never the color-emoji face."""
+    installed = set(QFontDatabase.families())
+    fam = next((n for n in ("Segoe UI Symbol", "Segoe UI") if n in installed),
+               "Segoe UI")
+    f = QFont(fam, size_pt)
+    f.setWeight(QFont.Weight.Normal)
+    return f
+
+
 def qss() -> str:
     """Global stylesheet: sharp corners everywhere, hairline borders,
     Rosso Corsa only on the primary CTA, yellow focus ring on inputs."""
@@ -99,6 +110,8 @@ QPushButton#primary:pressed {{ background: {PRIMARY_ACTIVE}; }}
 QPushButton#primary:disabled {{ background: {SURFACE_3}; color: {INK_SUBTLE}; }}
 QPushButton#ghost {{ background: transparent; color: {INK_MUTED}; padding: 8px 14px; }}
 QPushButton#ghost:hover {{ background: {SURFACE_2}; color: {INK}; }}
+QPushButton#icon {{ background: transparent; color: {INK_MUTED}; padding: 3px 7px; }}
+QPushButton#icon:hover {{ background: {SURFACE_2}; color: {INK}; }}
 QPushButton#outline {{
     background: transparent; color: {INK};
     border: 1px solid {INK}; padding: 7px 14px;
@@ -116,9 +129,11 @@ QToolTip {{ background: {SURFACE_3}; color: {INK}; border: 1px solid {HAIRLINE_T
 """
 
 
-def eyebrow_row(text: str, parent: QWidget | None = None) -> QWidget:
+def eyebrow_row(text: str, parent: QWidget | None = None,
+                right: bool = False) -> QWidget:
     """Mono uppercase eyebrow with the Rosso Corsa mark-dot — the dialog
-    equivalent of the wordmark glyph."""
+    equivalent of the wordmark glyph. `right=True` pushes the dot+label to
+    the trailing edge (the stretch leads instead of follows)."""
     from PySide6.QtWidgets import QHBoxLayout
 
     row = QWidget(parent)
@@ -131,9 +146,12 @@ def eyebrow_row(text: str, parent: QWidget | None = None) -> QWidget:
     label = QLabel(text.upper(), row)
     label.setObjectName("eyebrow")
     label.setFont(font("mono", 8, letter_spacing=0.28))
+    if right:
+        lay.addStretch(1)
     lay.addWidget(dot)
     lay.addWidget(label)
-    lay.addStretch(1)
+    if not right:
+        lay.addStretch(1)
     return row
 
 

@@ -13,11 +13,12 @@ export function generateDeviceToken() {
 
 /**
  * Validates the `Authorization: Bearer <device token>` header on ingest
- * routes. Returns the device row (with user_id) or a 401 response.
+ * routes. Returns the device row (with user_id) and the owner's username
+ * (null if the profile has no handle set yet), or a 401 response.
  */
 export async function authenticateDevice(
   request: Request
-): Promise<{ device: Device } | { error: NextResponse }> {
+): Promise<{ device: Device; username: string | null } | { error: NextResponse }> {
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) {
@@ -47,7 +48,13 @@ export async function authenticateDevice(
     .eq("id", device.id)
     .then(() => {});
 
-  return { device };
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("username")
+    .eq("id", device.user_id)
+    .single();
+
+  return { device, username: profile?.username ?? null };
 }
 
 const UUID_RE =
