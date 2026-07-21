@@ -125,12 +125,14 @@ class StatusWindow(QDialog):
                  set_watching: Callable[[bool], None],
                  status_text: Callable[[], str],
                  get_config: Callable[[], dict],
+                 is_revoked: Callable[[], bool],
                  on_settings_saved: Callable[[], None]):
         super().__init__(None)
         self._is_watching = is_watching
         self._set_watching = set_watching
         self._status_text = status_text
         self._get_config = get_config
+        self._is_revoked = is_revoked
         self._on_settings_saved_cb = on_settings_saved
 
         self.setWindowTitle("SanGit")
@@ -146,6 +148,7 @@ class StatusWindow(QDialog):
         self._stack.addWidget(self._status_page)    # index 0
         self._stack.addWidget(self._settings_page)  # index 1
         main.addWidget(self._stack)
+        self.set_revoked(self._is_revoked())
 
         # Queue counts move while the window is open (uploads finish,
         # renders start) — poll gently, only while visible.
@@ -173,6 +176,12 @@ class StatusWindow(QDialog):
         header.addWidget(cog, 0, Qt.AlignmentFlag.AlignTop)
         header.addWidget(theme.eyebrow_row("SanGit service", page, right=True), 1)
         lay.addLayout(header)
+
+        # Reconnect banner — shown only when the device is revoked on the web
+        # app (hidden widgets take no layout space, so no gap when hidden).
+        self._banner = self._build_revoked_banner(page)
+        lay.addWidget(self._banner)
+
         lay.addStretch(1)  # center the toggle block in the space below the header
 
         self._toggle = ToggleSwitch(self._is_watching(), page)
@@ -257,6 +266,44 @@ class StatusWindow(QDialog):
         self._rebuild_folders(cfg.get("watch_folders") or [])
         self._refresh()
 
+    def _build_revoked_banner(self, page: QWidget) -> QWidget:
+        frame = QFrame(page)
+        frame.setObjectName("revokedBanner")
+        frame.setStyleSheet(
+            f"#revokedBanner {{ border: 1px solid {theme.PRIMARY};"
+            f" background: {theme.SURFACE_1}; }}")
+        box = QVBoxLayout(frame)
+        box.setContentsMargins(14, 12, 14, 12)
+        box.setSpacing(6)
+        title = QLabel("Device revoked", frame)
+        title.setObjectName("headline")
+        title.setFont(theme.font("display", 12))
+        box.addWidget(title)
+        msg = QLabel("This PC was disconnected on the web app. Reconnect with "
+                     "a new pairing code to keep uploading.", frame)
+        msg.setObjectName("sub")
+        msg.setFont(theme.font("body", 9))
+        msg.setWordWrap(True)
+        box.addWidget(msg)
+        box.addSpacing(4)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addStretch(1)
+        btn = QPushButton("Reconnect", frame)
+        btn.setObjectName("primary")
+        btn.setFont(theme.font("body", 10))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(self._open_settings)
+        row.addWidget(btn)
+        box.addLayout(row)
+        frame.hide()
+        return frame
+
+    def set_revoked(self, on: bool):
+        """Show/hide the reconnect banner — called by the app when the device
+        is revoked on the web app, or reconnected."""
+        self._banner.setVisible(on)
+
     def _render_account(self):
         """Show '@handle' when the owner has a web username, else fall back
         to the device name (a profile may not have a handle set yet)."""
@@ -325,6 +372,7 @@ class StatusWindow(QDialog):
 
     def showEvent(self, e):
         self._refresh()
+        self.set_revoked(self._is_revoked())
         self._timer.start()
         super().showEvent(e)
 

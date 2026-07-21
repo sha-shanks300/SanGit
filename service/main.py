@@ -12,9 +12,10 @@ import ctypes
 import ctypes.wintypes
 import logging
 import sys
+import threading
 import webbrowser
 
-from PySide6.QtCore import QMetaObject, Qt, Signal, QObject
+from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, QObject
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
@@ -31,6 +32,8 @@ from uploader import UploadWorker
 from watcher import FolderWatcher
 
 log = logging.getLogger("sangit")
+
+HEARTBEAT_SECS = 300  # idle revocation check cadence (5 min)
 
 
 def _setup_logging():
@@ -66,6 +69,7 @@ class App(QObject):
     # emitted from worker threads; slots run on the Qt main thread
     save_detected = Signal(str)
     auth_error = Signal()
+    heartbeat_ok = Signal(object)  # carries the username from a good ping
 
     def __init__(self, cfg: dict, qapp: QApplication):
         super().__init__()
@@ -82,11 +86,12 @@ class App(QObject):
         self.tray: QSystemTrayIcon | None = None
         self.status_window: StatusWindow | None = None
         self._watch_action: QAction | None = None
-        self._settings_open = False
         self._auth_alerted = False
+        self._revoked = False
 
         self.save_detected.connect(self.popups.ask)
         self.auth_error.connect(self._handle_auth_error)
+        self.heartbeat_ok.connect(self._on_heartbeat_ok)
 
     # watcher thread -> Qt main thread via signal
     def _on_save(self, flp_path: str):
@@ -111,8 +116,11 @@ class App(QObject):
             self.watcher.start()  # otherwise run() starts it
         store.requeue_errored_commits()
         self._auth_alerted = False
+        self._revoked = False  # reconnected — leave the revoked state
+        self._update_tray_icon()
         if self.status_window:  # refresh the open window in place (folders may
             self.status_window.update_config(cfg)  # have changed) — don't destroy
+            self.status_window.set_revoked(False)
         log.info("settings applied; watching %s", cfg["watch_folders"])
 
     def _on_settings_saved(self):
@@ -134,9 +142,7 @@ class App(QObject):
             self._watch_action.blockSignals(False)
         if self.status_window:
             self.status_window.sync_state(on)
-        if self.tray:
-            self.tray.setIcon(theme.app_icon() if on else theme.app_icon_dimmed())
-            self.tray.setToolTip("SanGit" if on else "SanGit — paused")
+        self._update_tray_icon()
         log.info("watching %s", "resumed" if on else "paused")
 
     def open_status(self):
@@ -148,28 +154,13 @@ class App(QObject):
                 set_watching=self.set_watching,
                 status_text=self._status_text,
                 get_config=lambda: self.cfg,
+                is_revoked=lambda: self._revoked,
                 on_settings_saved=self._on_settings_saved)
         self.status_window.show()
         self.status_window.raise_()
         self.status_window.activateWindow()
 
-    def open_settings(self):
-        """Standalone modal settings/re-pair — used only when a worker hits a
-        401 (revoked device); the everyday entry point is the status window's
-        cogwheel. Change folder, URL, FL path, or re-pair."""
-        if self._settings_open:
-            return
-        self._settings_open = True
-        try:
-            cfg = config.load()
-            if pairing.run_setup(cfg):
-                self._apply_config(config.load())
-        except Exception:
-            log.exception("settings dialog failed")
-        finally:
-            self._settings_open = False
-
-    # worker thread -> signal -> main thread
+    # worker/heartbeat thread -> signal -> main thread
     def _on_auth_error(self):
         if self._auth_alerted:
             return
@@ -177,13 +168,58 @@ class App(QObject):
         self.auth_error.emit()
 
     def _handle_auth_error(self):
-        """Worker got a 401: the device was revoked on the web app."""
-        log.error("device token rejected — it was likely revoked; re-pair via Settings")
+        """Token rejected (a worker or the heartbeat got a 401): the device was
+        revoked on the web app. Surface it softly — notify, dim the tray icon,
+        and show a reconnect banner in the status window — without forcing a
+        modal. The watcher keeps running; uploads park and flush on reconnect."""
+        log.error("device token rejected — revoked on the web app; reconnect needed")
+        self._revoked = True
+        self._update_tray_icon()
         if self.tray:
             self.tray.showMessage(
-                "SanGit", "This device was revoked. Open Settings to re-pair.",
+                "SanGit — device revoked",
+                "This PC was disconnected on the web app. Open SanGit to reconnect.",
                 QSystemTrayIcon.MessageIcon.Warning)
-        self.open_settings()
+        if self.status_window:
+            self.status_window.set_revoked(True)
+
+    def _update_tray_icon(self):
+        """Reconcile the tray icon/tooltip: revoked (needs reconnect) takes
+        precedence over paused, which takes precedence over the normal mark."""
+        if not self.tray:
+            return
+        if self._revoked:
+            self.tray.setIcon(theme.app_icon_dimmed())
+            self.tray.setToolTip("SanGit — device revoked")
+        elif not self.watching:
+            self.tray.setIcon(theme.app_icon_dimmed())
+            self.tray.setToolTip("SanGit — paused")
+        else:
+            self.tray.setIcon(theme.app_icon())
+            self.tray.setToolTip("SanGit")
+
+    # ---- heartbeat: catch revocation while idle ----
+    def _heartbeat_tick(self):
+        """Timer fires on the main thread; do the network call off-thread so
+        the UI never blocks."""
+        if self._revoked or not config.is_paired(self.cfg):
+            return  # already known-revoked, or nothing to check
+        threading.Thread(target=self._heartbeat_probe, daemon=True).start()
+
+    def _heartbeat_probe(self):
+        try:
+            resp = self.client.ping()
+        except ApiError as e:
+            if e.status == 401:
+                self._on_auth_error()  # thread-safe: emits a queued signal
+            else:
+                log.debug("heartbeat inconclusive (%s) — assuming offline", e)
+            return
+        self.heartbeat_ok.emit(resp.get("username"))
+
+    def _on_heartbeat_ok(self, username):
+        # Valid token: keep the cached handle (and "Connected as") fresh.
+        self._sync_username(username)
 
     def validate_token(self) -> bool:
         """Startup check; returns False only when the server says 401.
@@ -286,6 +322,10 @@ class App(QObject):
         self.watcher.start()
         self._build_tray()
         self._install_ctrl_handler()
+        self._heartbeat = QTimer(self)
+        self._heartbeat.setInterval(HEARTBEAT_SECS * 1000)
+        self._heartbeat.timeout.connect(self._heartbeat_tick)
+        self._heartbeat.start()
         log.info("service running; watching %s (Ctrl+C or tray menu to quit)",
                  self.cfg["watch_folders"])
         self.qapp.exec()  # blocks until quit (tray menu or Ctrl+C)
