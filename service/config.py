@@ -16,6 +16,7 @@ LOG_PATH = CONFIG_DIR / "service.log"
 DEFAULTS = {
     "api_url": "",
     "device_token": "",
+    "username": "",  # owner's web handle, refreshed from pair/ping responses
     "device_name": os.environ.get("COMPUTERNAME", "Studio PC"),
     "watch_folders": [],
     "fl_executable": r"C:\Program Files\Image-Line\FL Studio 21\FL64.exe",
