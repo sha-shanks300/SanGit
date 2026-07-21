@@ -1,9 +1,12 @@
-"""Tray status window: a big slide toggle over live watcher state.
+"""Tray status window: the watcher toggle plus an in-window settings view.
 
 Opened by left-clicking the tray icon (or the "Open SanGit" menu item).
-Modeless; closing hides it back to the tray. The toggle drives the App's
-soft-pause `watching` flag through callbacks — this module knows nothing
-about the watcher itself.
+Modeless; closing hides it back to the tray. The default view shows the
+watch toggle over live watcher state; a cogwheel in the header swaps the
+window to an embedded settings form (the same `SettingsForm` the standalone
+pairing modal uses), with a back arrow to return. The toggle drives the
+App's soft-pause `watching` flag through callbacks — this module knows
+nothing about the watcher itself.
 """
 
 from pathlib import Path
@@ -12,9 +15,17 @@ from typing import Callable
 from PySide6.QtCore import (Property, QEasingCurve, QPropertyAnimation, Qt,
                             QTimer, Signal)
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QDialog, QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel,
+                               QPushButton, QStackedWidget, QVBoxLayout,
+                               QWidget)
 
 import theme
+from pairing import SettingsForm
+
+# Both views share one constant window size (widest + tallest view wins) so
+# the frame never jumps when the cogwheel/back button swaps between them —
+# which also keeps the nav button under the pointer across the swap.
+WINDOW_WIDTH = 480
 
 
 def _lerp_color(a: str, b: str, t: float) -> QColor:
@@ -33,7 +44,7 @@ class ToggleSwitch(QWidget):
 
     toggled = Signal(bool)  # emitted only for user-initiated flips
 
-    W, H, PAD = 96, 48, 5
+    W, H, PAD = 120, 60, 6
 
     def __init__(self, checked: bool = True, parent: QWidget | None = None):
         super().__init__(parent)
@@ -106,68 +117,35 @@ class ToggleSwitch(QWidget):
 
 
 class StatusWindow(QDialog):
-    """Glanceable state: toggle, "Watching…"/"Paused", queue line, and the
-    watched folder names (so a wrong folder is caught at a glance)."""
+    """Two views in one window: the glanceable watcher status (toggle,
+    "Watching…"/"Paused", queue line, watched folders) and, behind the
+    header cogwheel, the embedded settings form."""
 
     def __init__(self, *, is_watching: Callable[[], bool],
                  set_watching: Callable[[bool], None],
                  status_text: Callable[[], str],
-                 folders: list[str]):
+                 get_config: Callable[[], dict],
+                 on_settings_saved: Callable[[], None]):
         super().__init__(None)
         self._is_watching = is_watching
         self._set_watching = set_watching
         self._status_text = status_text
+        self._get_config = get_config
+        self._on_settings_saved_cb = on_settings_saved
 
         self.setWindowTitle("SanGit")
         self.setWindowIcon(theme.app_icon())
-        self.setFixedWidth(340)
+        self.setFixedWidth(WINDOW_WIDTH)
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(28, 24, 28, 24)
-        lay.setSpacing(0)
-        lay.addWidget(theme.eyebrow_row("SanGit service", self))
-        lay.addSpacing(28)
-
-        self._toggle = ToggleSwitch(is_watching(), self)
-        self._toggle.toggled.connect(self._on_toggled)
-        lay.addWidget(self._toggle, alignment=Qt.AlignmentFlag.AlignHCenter)
-        lay.addSpacing(18)
-
-        self._state = QLabel("", self)
-        self._state.setObjectName("headline")
-        self._state.setFont(theme.font("display", 17))
-        self._state.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        lay.addWidget(self._state)
-        lay.addSpacing(6)
-
-        self._queue = QLabel("", self)
-        self._queue.setObjectName("sub")
-        self._queue.setFont(theme.font("body", 9))
-        self._queue.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        lay.addWidget(self._queue)
-        lay.addSpacing(24)
-
-        rule = QFrame(self)
-        rule.setFrameShape(QFrame.Shape.HLine)
-        rule.setStyleSheet(f"background: {theme.HAIRLINE_TERTIARY}; border: none;")
-        rule.setFixedHeight(1)
-        lay.addWidget(rule)
-        lay.addSpacing(14)
-
-        lay.addWidget(theme.field_label(
-            "Watching folder" + ("s" if len(folders) != 1 else ""), self))
-        lay.addSpacing(6)
-        for folder in folders:
-            p = Path(folder)
-            name = QLabel(p.name or str(p), self)
-            name.setFont(theme.font("body", 10))
-            lay.addWidget(name)
-            full = QLabel(str(p), self)
-            full.setObjectName("filename")
-            full.setFont(theme.font("mono", 7))
-            full.setWordWrap(True)
-            lay.addWidget(full)
-            lay.addSpacing(8)
+        main = QVBoxLayout(self)
+        main.setContentsMargins(0, 0, 0, 0)
+        main.setSpacing(0)
+        self._stack = QStackedWidget(self)
+        self._status_page = self._build_status_page()
+        self._settings_page = self._build_settings_page()
+        self._stack.addWidget(self._status_page)    # index 0
+        self._stack.addWidget(self._settings_page)  # index 1
+        main.addWidget(self._stack)
 
         # Queue counts move while the window is open (uploads finish,
         # renders start) — poll gently, only while visible.
@@ -176,6 +154,91 @@ class StatusWindow(QDialog):
         self._timer.timeout.connect(self._refresh)
         self._refresh()
         theme.dark_titlebar(self)
+
+    # ---- status view ----
+    def _build_status_page(self) -> QWidget:
+        page = QWidget(self)
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(28, 24, 28, 24)
+        lay.setSpacing(0)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        cog = QPushButton("⚙", page)  # gear
+        cog.setObjectName("icon")
+        cog.setFont(theme.symbol_font(13))
+        cog.setCursor(Qt.CursorShape.PointingHandCursor)
+        cog.setToolTip("Settings")
+        cog.clicked.connect(self._open_settings)
+        header.addWidget(cog, 0, Qt.AlignmentFlag.AlignTop)
+        header.addWidget(theme.eyebrow_row("SanGit service", page, right=True), 1)
+        lay.addLayout(header)
+        lay.addStretch(1)  # center the toggle block in the space below the header
+
+        self._toggle = ToggleSwitch(self._is_watching(), page)
+        self._toggle.toggled.connect(self._on_toggled)
+        lay.addWidget(self._toggle, alignment=Qt.AlignmentFlag.AlignHCenter)
+        lay.addSpacing(18)
+
+        self._state = QLabel("", page)
+        self._state.setObjectName("headline")
+        self._state.setFont(theme.font("display", 17))
+        self._state.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self._state)
+        lay.addSpacing(6)
+
+        self._queue = QLabel("", page)
+        self._queue.setObjectName("sub")
+        self._queue.setFont(theme.font("body", 9))
+        self._queue.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self._queue)
+        lay.addStretch(1)  # push the folder footer down to the window's base
+
+        rule = QFrame(page)
+        rule.setFrameShape(QFrame.Shape.HLine)
+        rule.setStyleSheet(f"background: {theme.HAIRLINE_TERTIARY}; border: none;")
+        rule.setFixedHeight(1)
+        lay.addWidget(rule)
+        lay.addSpacing(14)
+
+        # Account identity — which web handle this PC uploads to. Refreshed
+        # via _render_account() (username self-heals on the startup ping).
+        lay.addWidget(theme.field_label("Connected as", page))
+        lay.addSpacing(4)
+        self._account = QLabel("", page)
+        self._account.setFont(theme.font("body", 11))
+        lay.addWidget(self._account)
+        lay.addSpacing(16)
+
+        # Watched-folder list rebuilt in place when settings change.
+        self._folders_box = QVBoxLayout()
+        self._folders_box.setContentsMargins(0, 0, 0, 0)
+        self._folders_box.setSpacing(0)
+        lay.addLayout(self._folders_box)
+        self._rebuild_folders(self._get_config().get("watch_folders") or [])
+        return page
+
+    def _rebuild_folders(self, folders: list[str]):
+        while self._folders_box.count():
+            item = self._folders_box.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+
+        self._folders_box.addWidget(theme.field_label(
+            "Watching folder" + ("s" if len(folders) != 1 else ""), self))
+        self._folders_box.addSpacing(6)
+        for folder in folders:
+            p = Path(folder)
+            name = QLabel(p.name or str(p), self)
+            name.setFont(theme.font("body", 10))
+            self._folders_box.addWidget(name)
+            full = QLabel(str(p), self)
+            full.setObjectName("filename")
+            full.setFont(theme.font("mono", 7))
+            full.setWordWrap(True)
+            self._folders_box.addWidget(full)
+            self._folders_box.addSpacing(8)
 
     def _on_toggled(self, on: bool):
         self._set_watching(on)
@@ -187,11 +250,78 @@ class StatusWindow(QDialog):
         self._toggle.setChecked(on)
         self._refresh()
 
+    def update_config(self, cfg: dict | None = None):
+        """Refresh the open window in place after settings are applied —
+        the folder list may have changed. Never destroys the window."""
+        cfg = cfg or self._get_config()
+        self._rebuild_folders(cfg.get("watch_folders") or [])
+        self._refresh()
+
+    def _render_account(self):
+        """Show '@handle' when the owner has a web username, else fall back
+        to the device name (a profile may not have a handle set yet)."""
+        cfg = self._get_config()
+        handle = (cfg.get("username") or "").strip()
+        if handle:
+            self._account.setText(f"@{handle}")
+            self._account.setStyleSheet(f"color: {theme.INK};")
+        else:
+            self._account.setText(cfg.get("device_name") or "This device")
+            self._account.setStyleSheet(f"color: {theme.INK_MUTED};")
+
     def _refresh(self):
         watching = self._is_watching()
         self._state.setText("Watching…" if watching else "Paused")
         self._queue.setText(self._status_text() if watching
                             else "Saves are ignored until you turn this back on")
+        self._render_account()
+
+    # ---- settings view ----
+    def _build_settings_page(self) -> QWidget:
+        page = QWidget(self)
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(28, 24, 28, 24)
+        lay.setSpacing(0)
+
+        # Back button sits exactly where the cogwheel was (left, top) so the
+        # pointer is already on it the instant the view swaps.
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        back = QPushButton("‹", page)  # chevron-back
+        back.setObjectName("icon")
+        back.setFont(theme.symbol_font(15))
+        back.setCursor(Qt.CursorShape.PointingHandCursor)
+        back.setToolTip("Back")
+        back.clicked.connect(self._close_settings)
+        header.addWidget(back, 0, Qt.AlignmentFlag.AlignTop)
+        header.addWidget(theme.eyebrow_row("SanGit device", page, right=True), 1)
+        lay.addLayout(header)
+        lay.addSpacing(12)
+
+        # One persistent form; its fields are refreshed from the live cfg
+        # each time the view opens (see _open_settings). Nothing is live
+        # until it writes to disk and the app reloads via on_settings_saved.
+        self._settings_form = SettingsForm(
+            dict(self._get_config()), cancel_label="Cancel", parent=page)
+        self._settings_form.saved.connect(self._on_settings_saved)
+        self._settings_form.cancelled.connect(self._close_settings)
+        lay.addWidget(self._settings_form)
+        lay.addStretch(1)
+        return page
+
+    def _open_settings(self):
+        self._settings_form.load(self._get_config())
+        self._stack.setCurrentIndex(1)
+
+    def _close_settings(self):
+        self._stack.setCurrentIndex(0)
+        self._refresh()
+
+    def _on_settings_saved(self):
+        # App reloads config from disk and hot-applies it, which calls back
+        # into update_config() to refresh this window's folder list.
+        self._on_settings_saved_cb()
+        self._close_settings()
 
     def showEvent(self, e):
         self._refresh()
