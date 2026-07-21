@@ -111,10 +111,13 @@ class App(QObject):
             self.watcher.start()  # otherwise run() starts it
         store.requeue_errored_commits()
         self._auth_alerted = False
-        if self.status_window:  # folder list may have changed — rebuild lazily
-            self.status_window.close()
-            self.status_window = None
+        if self.status_window:  # refresh the open window in place (folders may
+            self.status_window.update_config(cfg)  # have changed) — don't destroy
         log.info("settings applied; watching %s", cfg["watch_folders"])
+
+    def _on_settings_saved(self):
+        """The in-window settings form saved: reload from disk and hot-apply."""
+        self._apply_config(config.load())
 
     # ---- watch toggle (single source of truth) ----
     def set_watching(self, on: bool):
@@ -144,13 +147,16 @@ class App(QObject):
                 is_watching=lambda: self.watching,
                 set_watching=self.set_watching,
                 status_text=self._status_text,
-                folders=self.cfg["watch_folders"])
+                get_config=lambda: self.cfg,
+                on_settings_saved=self._on_settings_saved)
         self.status_window.show()
         self.status_window.raise_()
         self.status_window.activateWindow()
 
     def open_settings(self):
-        """Tray 'Settings…' — change folder, URL, FL path, or re-pair."""
+        """Standalone modal settings/re-pair — used only when a worker hits a
+        401 (revoked device); the everyday entry point is the status window's
+        cogwheel. Change folder, URL, FL path, or re-pair."""
         if self._settings_open:
             return
         self._settings_open = True
@@ -180,15 +186,30 @@ class App(QObject):
         self.open_settings()
 
     def validate_token(self) -> bool:
-        """Startup check; returns False only when the server says 401."""
+        """Startup check; returns False only when the server says 401.
+        Also refreshes the cached username from the ping response."""
         try:
-            self.client.ping()
+            resp = self.client.ping()
+            self._sync_username(resp.get("username"))
             return True
         except ApiError as e:
             if e.status == 401:
                 return False
             log.warning("token check inconclusive (%s) — continuing offline", e)
             return True
+
+    def _sync_username(self, username: str | None):
+        """Persist the owner's handle when the server reports a new value —
+        so a rename on the web app self-heals on the next launch. `ping`
+        is authoritative, so an unset handle (null) clears the cache too."""
+        new = username or ""
+        if new == self.cfg.get("username", ""):
+            return
+        self.cfg["username"] = new
+        cfg = config.load()
+        cfg["username"] = new
+        config.save(cfg)
+        log.info("username refreshed to %s", f"@{new}" if new else "(unset)")
 
     # ---- tray ----
     def _status_text(self) -> str:
@@ -225,7 +246,6 @@ class App(QObject):
                        lambda: self.renderer.render_now())
         menu.addAction("Open dashboard",
                        lambda: webbrowser.open(f"{self.cfg['api_url']}/dashboard"))
-        menu.addAction("Settings…", self.open_settings)
         menu.addSeparator()
         menu.addAction("Quit SanGit", self.qapp.quit)
 
