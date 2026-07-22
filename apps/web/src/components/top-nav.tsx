@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { buttonClasses } from "@/components/ui";
+import { DownloadApp } from "@/components/download-app";
 import { LogoMark } from "@/components/logo";
 
 function Wordmark() {
@@ -37,6 +38,7 @@ export async function TopNav() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <DownloadApp variant="tertiary" label="Download" />
           {user ? (
             <form action="/auth/signout" method="post">
               <button className={buttonClasses("secondary")} type="submit">

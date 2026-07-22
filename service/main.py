@@ -21,9 +21,11 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 import committer
 import config
+import install_startup
 import pairing
 import store
 import theme
+import version
 from api_client import ApiClient, ApiError
 from popup import PopupManager
 from render_queue import RenderWorker
@@ -335,13 +337,27 @@ class App(QObject):
         log.info("service stopped")
 
 
+def _register_startup_if_packaged():
+    """Packaged .exe: register to launch at login on first run (self-heals the
+    path if moved). No-op from source — dev runs shouldn't hijack login."""
+    if not getattr(sys, "frozen", False):
+        return
+    try:
+        if install_startup.ensure_registered():
+            log.info("registered SanGit to start at login")
+    except OSError:
+        log.warning("could not register startup", exc_info=True)
+
+
 def main():
     _set_app_identity()
     _setup_logging()
+    log.info("SanGit v%s starting", version.__version__)
     if _already_running():
         log.error("SanGit service is already running (check the tray, next "
                   "to the clock) — not starting a second copy.")
         return
+    _register_startup_if_packaged()
     store.init()
 
     qapp = QApplication(sys.argv)
