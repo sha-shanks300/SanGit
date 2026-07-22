@@ -13,12 +13,33 @@ NAME = "SanGit"
 
 
 def command() -> str:
+    # When frozen (packaged .exe), sys.executable IS SanGit.exe — the thing to
+    # launch at login. From source, launch pythonw main.py.
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}"'
     exe = Path(__file__).parent / "dist" / "SanGit.exe"
     if exe.exists():
         return f'"{exe}"'
     py = Path(sys.executable).parent / "pythonw.exe"
     interp = py if py.exists() else Path(sys.executable)
     return f'"{interp}" "{Path(__file__).parent / "main.py"}"'
+
+
+def ensure_registered() -> bool:
+    """Idempotently point the login Run key at the current binary, self-healing
+    if the .exe was moved. Returns True when it wrote a new/changed value.
+    Called on every packaged startup so first run 'just works'."""
+    cmd = command()
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0,
+                        winreg.KEY_READ | winreg.KEY_SET_VALUE) as key:
+        try:
+            existing, _ = winreg.QueryValueEx(key, NAME)
+        except FileNotFoundError:
+            existing = None
+        if existing == cmd:
+            return False
+        winreg.SetValueEx(key, NAME, 0, winreg.REG_SZ, cmd)
+        return True
 
 
 def main() -> None:
