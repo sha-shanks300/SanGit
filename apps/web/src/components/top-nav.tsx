@@ -38,7 +38,9 @@ export async function TopNav() {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <DownloadApp variant="tertiary" label="Download" />
+          {/* Red CTA only when signed in — on the landing, "Get started" is the
+              lone accent, so Download stays quiet there (DESIGN.md: one accent). */}
+          <DownloadApp variant={user ? "primary" : "tertiary"} label="Download" />
           {user ? (
             <form action="/auth/signout" method="post">
               <button className={buttonClasses("secondary")} type="submit">

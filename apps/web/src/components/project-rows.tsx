@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { Card } from "@/components/ui";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
+import { OnboardingChecklist } from "@/components/onboarding-checklist";
 
 /**
  * Live project list (SoundCloud-style rows): refetches on any Realtime change
@@ -65,21 +64,7 @@ export function ProjectRows() {
   }
 
   if (projects.length === 0) {
-    return (
-      <Card className="mt-8 max-w-xl">
-        <h2 className="text-card-title font-medium text-ink">
-          No projects yet
-        </h2>
-        <p className="mt-2 text-body-sm text-ink-subtle">
-          Pair the SanGit local service under{" "}
-          <Link href="/settings/devices" className="text-ink underline underline-offset-2">
-            Settings → Devices
-          </Link>
-          , then save your FL Studio project. Your first commit will show up
-          here automatically.
-        </p>
-      </Card>
-    );
+    return <OnboardingChecklist />;
   }
 
   return (
