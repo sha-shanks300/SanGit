@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { buttonClasses, Eyebrow } from "@/components/ui";
 import { APP_VERSION } from "@/lib/app-version";
 
@@ -43,7 +44,12 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  // Portal to <body>: the top nav's backdrop-blur creates a containing block
+  // for position:fixed, which would otherwise trap this modal inside the
+  // 64px header band instead of centering it in the viewport.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/80 p-4"
       role="dialog"
@@ -52,7 +58,7 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md border border-hairline bg-surface-3 p-6"
+        className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto border border-hairline bg-surface-3 p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <Eyebrow>Get the app</Eyebrow>
@@ -106,6 +112,7 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
