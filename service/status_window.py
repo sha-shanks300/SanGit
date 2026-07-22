@@ -16,9 +16,9 @@ from typing import Callable
 from PySide6.QtCore import (Property, QEasingCurve, QPropertyAnimation, Qt,
                             QTimer, Signal)
 from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel,
-                               QPushButton, QStackedWidget, QVBoxLayout,
-                               QWidget)
+from PySide6.QtWidgets import (QDialog, QFileDialog, QFrame, QHBoxLayout,
+                               QLabel, QLineEdit, QPushButton, QStackedWidget,
+                               QVBoxLayout, QWidget)
 
 import theme
 import version
@@ -129,6 +129,7 @@ class StatusWindow(QDialog):
                  get_config: Callable[[], dict],
                  is_revoked: Callable[[], bool],
                  get_update_version: Callable[[], str],
+                 on_import: Callable[[list[str], str | None], None],
                  on_settings_saved: Callable[[], None]):
         super().__init__(None)
         self._is_watching = is_watching
@@ -137,6 +138,7 @@ class StatusWindow(QDialog):
         self._get_config = get_config
         self._is_revoked = is_revoked
         self._get_update_version = get_update_version
+        self._on_import = on_import
         self._on_settings_saved_cb = on_settings_saved
 
         self.setWindowTitle("SanGit")
@@ -235,11 +237,85 @@ class StatusWindow(QDialog):
         self._rebuild_folders(self._get_config().get("watch_folders") or [])
 
         lay.addSpacing(14)
+        import_btn = QPushButton("Import existing project…", page)
+        import_btn.setObjectName("outline")
+        import_btn.setFont(theme.font("body", 9))
+        import_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        import_btn.clicked.connect(self._do_import)
+        lay.addWidget(import_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        lay.addSpacing(14)
         ver = QLabel(f"SanGit v{version.__version__}", page)
         ver.setObjectName("filename")  # mono, muted
         ver.setFont(theme.font("mono", 7))
         lay.addWidget(ver)
         return page
+
+    # ---- import existing .flp ----
+    def _do_import(self):
+        folders = self._get_config().get("watch_folders") or []
+        start_dir = folders[0] if folders else ""
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Choose FL Studio project(s) to import",
+            start_dir, "FL Studio projects (*.flp)")
+        if not paths:
+            return
+        name = self._prompt_import_name(len(paths))
+        if name is None:  # cancelled the name prompt
+            return
+        self._on_import(paths, name or None)
+
+    def _prompt_import_name(self, count: int) -> str | None:
+        """Small themed prompt for an optional version name. Returns the text
+        (possibly empty) on Import, or None if cancelled."""
+        plural = "s" if count != 1 else ""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Import project{plural}")
+        dlg.setFixedWidth(400)
+        theme.dark_titlebar(dlg)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(24, 22, 24, 22)
+        lay.setSpacing(0)
+        lay.addWidget(theme.eyebrow_row("SanGit — import", dlg))
+        lay.addSpacing(8)
+        head = QLabel(f"Import {count} project{plural}", dlg)
+        head.setObjectName("headline")
+        head.setFont(theme.font("display", 14))
+        lay.addWidget(head)
+        lay.addSpacing(2)
+        sub = QLabel("Name this version, or leave it blank.", dlg)
+        sub.setObjectName("sub")
+        sub.setFont(theme.font("body", 9))
+        lay.addWidget(sub)
+        lay.addSpacing(14)
+        lay.addWidget(theme.field_label("Version name (optional)", dlg))
+        lay.addSpacing(3)
+        entry = QLineEdit(dlg)
+        entry.setFont(theme.font("body", 10))
+        entry.setPlaceholderText("e.g. original, pre-SanGit")
+        lay.addWidget(entry)
+        lay.addSpacing(16)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addStretch(1)
+        cancel = QPushButton("Cancel", dlg)
+        cancel.setObjectName("ghost")
+        cancel.setFont(theme.font("body", 10))
+        cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel.clicked.connect(dlg.reject)
+        ok = QPushButton("Import", dlg)
+        ok.setObjectName("primary")
+        ok.setFont(theme.font("body", 10))
+        ok.setCursor(Qt.CursorShape.PointingHandCursor)
+        ok.setDefault(True)
+        ok.clicked.connect(dlg.accept)
+        row.addWidget(cancel)
+        row.addSpacing(8)
+        row.addWidget(ok)
+        lay.addLayout(row)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            return entry.text().strip()
+        return None
 
     def _rebuild_folders(self, folders: list[str]):
         while self._folders_box.count():

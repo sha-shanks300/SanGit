@@ -6,4 +6,4 @@ apps/web/src/lib/app-version.ts in sync so the download popup shows the same
 number.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
