@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TopNav } from "@/components/top-nav";
 import { buttonClasses, Eyebrow } from "@/components/ui";
+import { DownloadApp } from "@/components/download-app";
 import { LogoMark } from "@/components/logo";
 import heroImage from "./logo/HeroSection.png";
 
@@ -85,9 +86,7 @@ export default async function Home() {
               <Link href="/login" className={buttonClasses("primary")}>
                 Get started
               </Link>
-              <Link href="/login" className={buttonClasses("secondary")}>
-                Sign in
-              </Link>
+              <DownloadApp variant="secondary" label="Download for Windows" />
             </div>
           </div>
         </section>
