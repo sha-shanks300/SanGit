@@ -9,6 +9,7 @@ App's soft-pause `watching` flag through callbacks — this module knows
 nothing about the watcher itself.
 """
 
+import webbrowser
 from pathlib import Path
 from typing import Callable
 
@@ -127,6 +128,7 @@ class StatusWindow(QDialog):
                  status_text: Callable[[], str],
                  get_config: Callable[[], dict],
                  is_revoked: Callable[[], bool],
+                 get_update_version: Callable[[], str],
                  on_settings_saved: Callable[[], None]):
         super().__init__(None)
         self._is_watching = is_watching
@@ -134,6 +136,7 @@ class StatusWindow(QDialog):
         self._status_text = status_text
         self._get_config = get_config
         self._is_revoked = is_revoked
+        self._get_update_version = get_update_version
         self._on_settings_saved_cb = on_settings_saved
 
         self.setWindowTitle("SanGit")
@@ -150,6 +153,7 @@ class StatusWindow(QDialog):
         self._stack.addWidget(self._settings_page)  # index 1
         main.addWidget(self._stack)
         self.set_revoked(self._is_revoked())
+        self.set_update_available(self._get_update_version())
 
         # Queue counts move while the window is open (uploads finish,
         # renders start) — poll gently, only while visible.
@@ -182,6 +186,9 @@ class StatusWindow(QDialog):
         # app (hidden widgets take no layout space, so no gap when hidden).
         self._banner = self._build_revoked_banner(page)
         lay.addWidget(self._banner)
+        # Update banner — shown when a newer release exists.
+        self._update_banner = self._build_update_banner(page)
+        lay.addWidget(self._update_banner)
 
         lay.addStretch(1)  # center the toggle block in the space below the header
 
@@ -311,6 +318,53 @@ class StatusWindow(QDialog):
         is revoked on the web app, or reconnected."""
         self._banner.setVisible(on)
 
+    def _build_update_banner(self, page: QWidget) -> QWidget:
+        frame = QFrame(page)
+        frame.setObjectName("updateBanner")
+        frame.setStyleSheet(
+            f"#updateBanner {{ border: 1px solid {theme.HAIRLINE_TERTIARY};"
+            f" background: {theme.SURFACE_1}; }}")
+        box = QVBoxLayout(frame)
+        box.setContentsMargins(14, 12, 14, 12)
+        box.setSpacing(6)
+        title = QLabel("Update available", frame)
+        title.setObjectName("headline")
+        title.setFont(theme.font("display", 12))
+        title.setStyleSheet(f"color: {theme.SUCCESS};")
+        box.addWidget(title)
+        self._update_msg = QLabel("", frame)
+        self._update_msg.setObjectName("sub")
+        self._update_msg.setFont(theme.font("body", 9))
+        self._update_msg.setWordWrap(True)
+        box.addWidget(self._update_msg)
+        box.addSpacing(4)
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addStretch(1)
+        btn = QPushButton("Update", frame)
+        btn.setObjectName("primary")
+        btn.setFont(theme.font("body", 10))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.clicked.connect(self._open_update)
+        row.addWidget(btn)
+        box.addLayout(row)
+        frame.hide()
+        return frame
+
+    def set_update_available(self, version_str: str):
+        """Show/hide the update banner. Empty string hides it."""
+        v = (version_str or "").strip()
+        if not v:
+            self._update_banner.hide()
+            return
+        self._update_msg.setText(f"SanGit v{v} is ready to install.")
+        self._update_banner.show()
+
+    def _open_update(self):
+        url = (self._get_config().get("api_url") or "").rstrip("/")
+        if url:
+            webbrowser.open(f"{url}/download")
+
     def _render_account(self):
         """Show '@handle' when the owner has a web username, else fall back
         to the device name (a profile may not have a handle set yet)."""
@@ -380,6 +434,7 @@ class StatusWindow(QDialog):
     def showEvent(self, e):
         self._refresh()
         self.set_revoked(self._is_revoked())
+        self.set_update_available(self._get_update_version())
         self._timer.start()
         super().showEvent(e)
 

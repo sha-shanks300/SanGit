@@ -13,6 +13,7 @@ import ctypes.wintypes
 import logging
 import sys
 import threading
+import time
 import webbrowser
 
 from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, QObject
@@ -24,6 +25,7 @@ import config
 import pairing
 import store
 import theme
+import updater
 import version
 from api_client import ApiClient, ApiError
 from popup import PopupManager
@@ -71,6 +73,7 @@ class App(QObject):
     save_detected = Signal(str)
     auth_error = Signal()
     heartbeat_ok = Signal(object)  # carries the username from a good ping
+    update_available = Signal(str)  # carries the newer version string
 
     def __init__(self, cfg: dict, qapp: QApplication):
         super().__init__()
@@ -89,10 +92,13 @@ class App(QObject):
         self._watch_action: QAction | None = None
         self._auth_alerted = False
         self._revoked = False
+        self._update_version = ""
+        self._last_update_check = 0.0
 
         self.save_detected.connect(self.popups.ask)
         self.auth_error.connect(self._handle_auth_error)
         self.heartbeat_ok.connect(self._on_heartbeat_ok)
+        self.update_available.connect(self._handle_update_available)
 
     # watcher thread -> Qt main thread via signal
     def _on_save(self, flp_path: str):
@@ -156,6 +162,7 @@ class App(QObject):
                 status_text=self._status_text,
                 get_config=lambda: self.cfg,
                 is_revoked=lambda: self._revoked,
+                get_update_version=lambda: self._update_version,
                 on_settings_saved=self._on_settings_saved)
         self.status_window.show()
         self.status_window.raise_()
@@ -201,8 +208,9 @@ class App(QObject):
 
     # ---- heartbeat: catch revocation while idle ----
     def _heartbeat_tick(self):
-        """Timer fires on the main thread; do the network call off-thread so
+        """Timer fires on the main thread; do the network calls off-thread so
         the UI never blocks."""
+        self._maybe_check_update()  # daily, independent of pairing/revocation
         if self._revoked or not config.is_paired(self.cfg):
             return  # already known-revoked, or nothing to check
         threading.Thread(target=self._heartbeat_probe, daemon=True).start()
@@ -221,6 +229,36 @@ class App(QObject):
     def _on_heartbeat_ok(self, username):
         # Valid token: keep the cached handle (and "Connected as") fresh.
         self._sync_username(username)
+
+    # ---- update check (GitHub Releases; free, no auth) ----
+    def _maybe_check_update(self, force: bool = False):
+        """Kick off an update check on startup and roughly daily thereafter.
+        Independent of pairing — updates aren't auth-gated."""
+        if not force and time.time() - self._last_update_check < 86400:
+            return
+        self._last_update_check = time.time()
+        threading.Thread(target=self._update_check_probe, daemon=True).start()
+
+    def _update_check_probe(self):
+        newer = updater.check_for_update(version.__version__)
+        if newer:
+            self.update_available.emit(newer)
+
+    def _handle_update_available(self, new_version: str):
+        self._update_version = new_version
+        # Toast once per version, even across restarts, so we never nag.
+        if self.cfg.get("last_notified_update") != new_version:
+            self.cfg["last_notified_update"] = new_version
+            cfg = config.load()
+            cfg["last_notified_update"] = new_version
+            config.save(cfg)
+            if self.tray:
+                self.tray.showMessage(
+                    "SanGit update available",
+                    f"Version {new_version} is ready. Open SanGit to update.",
+                    QSystemTrayIcon.MessageIcon.Information)
+        if self.status_window:
+            self.status_window.set_update_available(new_version)
 
     def validate_token(self) -> bool:
         """Startup check; returns False only when the server says 401.
@@ -327,6 +365,7 @@ class App(QObject):
         self._heartbeat.setInterval(HEARTBEAT_SECS * 1000)
         self._heartbeat.timeout.connect(self._heartbeat_tick)
         self._heartbeat.start()
+        self._maybe_check_update(force=True)  # check once at launch
         log.info("service running; watching %s (Ctrl+C or tray menu to quit)",
                  self.cfg["watch_folders"])
         self.qapp.exec()  # blocks until quit (tray menu or Ctrl+C)

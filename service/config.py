@@ -24,6 +24,7 @@ DEFAULTS = {
     "popup_timeout_secs": 30,
     "debounce_secs": 2.5,
     "render_timeout_secs": 1800,
+    "last_notified_update": "",  # newest version we've toasted about (anti-nag)
 }
 
 
