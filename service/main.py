@@ -74,6 +74,7 @@ class App(QObject):
     auth_error = Signal()
     heartbeat_ok = Signal(object)  # carries the username from a good ping
     update_available = Signal(str)  # carries the newer version string
+    import_done = Signal(int)  # count of freshly imported projects
 
     def __init__(self, cfg: dict, qapp: QApplication):
         super().__init__()
@@ -99,6 +100,7 @@ class App(QObject):
         self.auth_error.connect(self._handle_auth_error)
         self.heartbeat_ok.connect(self._on_heartbeat_ok)
         self.update_available.connect(self._handle_update_available)
+        self.import_done.connect(self._on_import_done)
 
     # watcher thread -> Qt main thread via signal
     def _on_save(self, flp_path: str):
@@ -108,6 +110,31 @@ class App(QObject):
     # toast (main thread) hands off to a worker thread inside PopupManager
     def _do_commit(self, flp_path: str, display_name: str | None):
         committer.commit(flp_path, display_name)
+
+    # status-window "Import existing project…" -> commit pre-existing .flp(s).
+    # Off-thread: hashing a large .flp shouldn't freeze the UI. Reuses the
+    # normal pipeline (snapshot -> upload -> queued render); the uploader
+    # dedupes unchanged files by sha256.
+    def _import_projects(self, paths: list[str], name: str | None):
+        def work():
+            n = 0
+            for p in paths:
+                try:
+                    if committer.commit(p, name) is not None:
+                        n += 1
+                except Exception:
+                    log.exception("import failed for %s", p)
+            self.import_done.emit(n)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_import_done(self, n: int):
+        log.info("imported %d project(s)", n)
+        if self.tray and n:
+            self.tray.showMessage(
+                "SanGit",
+                f"Imported {n} project{'' if n == 1 else 's'} — uploading.",
+                QSystemTrayIcon.MessageIcon.Information)
 
     # ---- reconfiguration ----
     def _apply_config(self, cfg: dict):
@@ -163,6 +190,7 @@ class App(QObject):
                 get_config=lambda: self.cfg,
                 is_revoked=lambda: self._revoked,
                 get_update_version=lambda: self._update_version,
+                on_import=self._import_projects,
                 on_settings_saved=self._on_settings_saved)
         self.status_window.show()
         self.status_window.raise_()
