@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (QDialog, QFrame, QHBoxLayout, QLabel,
                                QWidget)
 
 import theme
+import version
 from pairing import SettingsForm
 
 # Both views share one constant window size (widest + tallest view wins) so
@@ -225,6 +226,12 @@ class StatusWindow(QDialog):
         self._folders_box.setSpacing(0)
         lay.addLayout(self._folders_box)
         self._rebuild_folders(self._get_config().get("watch_folders") or [])
+
+        lay.addSpacing(14)
+        ver = QLabel(f"SanGit v{version.__version__}", page)
+        ver.setObjectName("filename")  # mono, muted
+        ver.setFont(theme.font("mono", 7))
+        lay.addWidget(ver)
         return page
 
     def _rebuild_folders(self, folders: list[str]):
