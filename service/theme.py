@@ -37,6 +37,7 @@ PRIMARY_HOVER = "#9d2211"
 PRIMARY_ACTIVE = "#b01e0a"
 FOCUS = "#f6e500"
 WARNING = "#f13a2c"
+SUCCESS = "#03904a"  # the only other chromatic color (DESIGN.md)
 
 _families: dict | None = None
 
