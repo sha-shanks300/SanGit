@@ -92,8 +92,9 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
         <ol className="mt-5 flex flex-col gap-2 text-body-sm text-ink-muted">
           <li>
             <span className="font-mono text-ink-tertiary">1.</span> Run the
-            downloaded <span className="font-mono text-ink">SanGit.exe</span> — it
-            lives in your system tray.
+            downloaded{" "}
+            <span className="font-mono text-ink">SanGitSetup.exe</span> — a quick
+            installer adds SanGit to your system tray.
           </li>
           <li>
             <span className="font-mono text-ink-tertiary">2.</span> Open its
