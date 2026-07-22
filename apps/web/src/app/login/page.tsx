@@ -61,9 +61,14 @@ function LoginForm() {
       </div>
 
       {status === "sent" ? (
-        <p className="text-body-sm text-success">
-          Check your email for a sign-in link.
-        </p>
+        <div>
+          <p className="text-body-sm text-success">
+            Check your email for a sign-in link.
+          </p>
+          <p className="mt-1 text-caption text-ink-tertiary">
+            Not seeing it? Check your spam folder.
+          </p>
+        </div>
       ) : (
         <form onSubmit={signInWithEmail} className="flex flex-col gap-3">
           <Input
