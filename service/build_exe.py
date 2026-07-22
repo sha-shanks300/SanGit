@@ -16,6 +16,7 @@ subprocess.run(
         "--noconsole",
         "--name", "SanGit",
         "--clean",
+        "--icon", "assets/logoapp.ico",  # branded exe + shortcut icon
         # the toast/settings/tray UI is PySide6; ship the logo asset and
         # skip the heavy Qt modules the service never imports
         "--add-data", "assets;assets",
