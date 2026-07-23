@@ -18,15 +18,9 @@ export default async function DashboardPage() {
       {profile ? (
         <ProfileHeader profile={profile} isOwner />
       ) : (
-        <>
-          <Eyebrow>Dashboard</Eyebrow>
-          <h1 className="mt-1 text-headline text-ink">Projects</h1>
-        </>
+        <Eyebrow>Dashboard</Eyebrow>
       )}
-      <div className="mt-10">
-        <Eyebrow>Projects</Eyebrow>
-        <ProjectRows />
-      </div>
+      <ProjectRows />
     </div>
   );
 }

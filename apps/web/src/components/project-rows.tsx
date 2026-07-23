@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { ProjectsSectionHeading } from "@/components/section-heading";
 
 /**
  * Live project list (SoundCloud-style rows): refetches on any Realtime change
@@ -59,23 +60,33 @@ export function ProjectRows() {
 
   if (projects === null) {
     return (
-      <p className="mt-8 text-body-sm text-ink-subtle">Loading projects…</p>
+      <section className="mt-10 border-t border-hairline pt-8">
+        <ProjectsSectionHeading title="Projects" />
+        <p className="mt-6 text-body-sm text-ink-subtle">Loading projects…</p>
+      </section>
     );
   }
 
   if (projects.length === 0) {
-    return <OnboardingChecklist />;
+    return (
+      <section className="mt-10 border-t border-hairline">
+        <OnboardingChecklist />
+      </section>
+    );
   }
 
   return (
-    <div className="mt-8 flex flex-col gap-3">
-      {projects.map((p) => (
-        <ProjectRow
-          key={p.id}
-          project={p}
-          href={`/dashboard/projects/${p.id}`}
-        />
-      ))}
-    </div>
+    <section className="mt-10 border-t border-hairline pt-8">
+      <ProjectsSectionHeading title="Projects" count={projects.length} />
+      <div className="mt-6 flex flex-col gap-3">
+        {projects.map((p) => (
+          <ProjectRow
+            key={p.id}
+            project={p}
+            href={`/dashboard/projects/${p.id}`}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
