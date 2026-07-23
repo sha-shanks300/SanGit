@@ -160,7 +160,7 @@ export function ProjectSettings({
           {isPublic && (
             <>
               <div className="mt-3 flex items-center justify-between">
-                <span className="text-body-sm text-ink">Version history</span>
+                <span className="text-body-sm text-ink">Visitors see</span>
                 <button
                   type="button"
                   aria-pressed={showHistory}
@@ -172,16 +172,16 @@ export function ProjectSettings({
                       : "border-hairline text-ink-subtle hover:text-ink"
                   )}
                 >
-                  {showHistory ? "Full tree" : "Main only"}
+                  {showHistory ? "All versions" : "Main only"}
                 </button>
               </div>
               <p className="mt-2 text-caption text-ink-tertiary">
-                Visible at /p/{project.slug}
+                Visible at /p/{project.slug}.{" "}
                 {showHistory
-                  ? " — visitors see every version and the tree"
-                  : " — visitors hear one track only"}
+                  ? "Visitors see every version and the tree."
+                  : "Visitors hear one track only."}
                 {!project.main_version_id &&
-                  ". No Main set: visitors hear your latest version until you pick one"}
+                  " No Main set, so visitors hear your latest version until you pick one."}
               </p>
             </>
           )}
