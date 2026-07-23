@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { buttonClasses } from "@/components/ui";
-import { DownloadApp } from "@/components/download-app";
+import { NavDownload } from "@/components/nav-download";
 import { LogoMark } from "@/components/logo";
 
 function Wordmark() {
@@ -40,7 +40,7 @@ export async function TopNav() {
         <div className="flex items-center gap-3">
           {/* Red CTA only when signed in — on the landing, "Get started" is the
               lone accent, so Download stays quiet there (DESIGN.md: one accent). */}
-          <DownloadApp variant={user ? "primary" : "tertiary"} label="Download" />
+          <NavDownload variant={user ? "primary" : "tertiary"} label="Download" />
           {user ? (
             <form action="/auth/signout" method="post">
               <button className={buttonClasses("secondary")} type="submit">
@@ -52,7 +52,7 @@ export async function TopNav() {
               <Link href="/login" className={buttonClasses("secondary")}>
                 Sign in
               </Link>
-              <Link href="/login" className={buttonClasses("primary")}>
+              <Link href="/#get-started" className={buttonClasses("primary")}>
                 Get started
               </Link>
             </>
