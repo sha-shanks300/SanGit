@@ -83,11 +83,7 @@ export default async function ProfilePage({
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10">
-        <ProfileHeader
-          profile={profile}
-          isOwner={user?.id === profile.id}
-          onPublicPage
-        />
+        <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
 
         <section className="mt-12">
           <ProjectsSectionHeading
