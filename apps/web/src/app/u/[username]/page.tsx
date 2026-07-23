@@ -89,7 +89,7 @@ export default async function ProfilePage({
           onPublicPage
         />
 
-        <section className="mt-10 border-t border-hairline pt-8">
+        <section className="mt-12">
           <ProjectsSectionHeading
             title="Public projects"
             count={projects.length > 0 ? projects.length : undefined}
