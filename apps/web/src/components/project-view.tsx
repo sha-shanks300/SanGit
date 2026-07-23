@@ -15,7 +15,7 @@ import { VersionContextMenu } from "@/components/version-context-menu";
 import { DeleteVersionDialog } from "@/components/delete-version-dialog";
 import { Interactions } from "@/components/interactions";
 import { FavoriteButton } from "@/components/favorite-button";
-import { ShareManager } from "@/components/share-manager";
+import { ShareButton } from "@/components/share-button";
 import { FlpAccess } from "@/components/flp-access";
 import { Eyebrow, Panel, StatusBadge } from "@/components/ui";
 
@@ -139,7 +139,12 @@ export function ProjectView({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">{headerActions}</div>
+        <div className="flex items-center gap-2">
+          {isOwner && (
+            <ShareButton projectId={project.id} versionId={selected?.id ?? null} />
+          )}
+          {headerActions}
+        </div>
       </div>
 
       <Panel className="mt-8 overflow-hidden">
@@ -223,14 +228,8 @@ export function ProjectView({
             mainVersionId={project.main_version_id}
             onChanged={refetch}
             onRequestDelete={isOwner ? () => setDeleting(selected) : undefined}
-          >
-            {isOwner && (
-              <>
-                <ShareManager versionId={selected.id} projectId={project.id} />
-                <FlpAccess projectId={project.id} />
-              </>
-            )}
-          </VersionPanel>
+            accessTab={isOwner ? <FlpAccess projectId={project.id} /> : undefined}
+          />
           <Interactions versionId={selected.id} />
         </div>
       )}

@@ -18,7 +18,8 @@ export function ShareManager({
   versionId,
   projectId,
 }: {
-  versionId: string;
+  /** Selected version for "this version only" links; null disables that scope. */
+  versionId: string | null;
   projectId: string;
 }) {
   const [links, setLinks] = useState<ShareLink[]>([]);
@@ -45,6 +46,10 @@ export function ShareManager({
     setPrevVersionId(versionId);
     setFreshUrl(null);
   }
+
+  // Version scope needs a selected version; fall back to project when there
+  // isn't one (adjust-during-render, converges in one extra pass).
+  if (versionId === null && scope === "version") setScope("project");
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
@@ -90,7 +95,7 @@ export function ShareManager({
   );
 
   return (
-    <div className="mt-5 border-t border-hairline pt-5">
+    <div className="mt-4">
       <p className="text-caption text-ink-subtle">Private share links</p>
 
       <div className="mt-2 flex gap-1" role="tablist" aria-label="Share scope">
@@ -99,22 +104,28 @@ export function ShareManager({
             ["project", "All versions"],
             ["version", "This version only"],
           ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            role="tab"
-            aria-selected={scope === value}
-            onClick={() => setScope(value)}
-            className={cn(
-              "border px-3 py-1 text-caption transition-colors",
-              scope === value
-                ? "border-hairline-strong bg-surface-2 text-ink"
-                : "border-transparent text-ink-subtle hover:text-ink"
-            )}
-          >
-            {label}
-          </button>
-        ))}
+        ).map(([value, label]) => {
+          const disabled = value === "version" && versionId === null;
+          return (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={scope === value}
+              disabled={disabled}
+              title={disabled ? "Select a version first" : undefined}
+              onClick={() => setScope(value)}
+              className={cn(
+                "border px-3 py-1 text-caption transition-colors",
+                scope === value
+                  ? "border-hairline-strong bg-surface-2 text-ink"
+                  : "border-transparent text-ink-subtle hover:text-ink",
+                disabled && "cursor-not-allowed opacity-40 hover:text-ink-subtle"
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-3 flex items-center gap-2">

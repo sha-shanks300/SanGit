@@ -96,7 +96,7 @@ export function ProjectSettings({
   return (
     <div className="relative" ref={popoverRef}>
       <Button variant="secondary" onClick={() => setOpen((o) => !o)}>
-        Settings
+        Project settings
       </Button>
       {open && (
         <div className="absolute right-0 top-11 z-30 w-72 rounded-lg border border-hairline bg-surface-3 p-4">
