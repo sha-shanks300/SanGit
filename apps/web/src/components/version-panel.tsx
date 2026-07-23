@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Version } from "@/lib/database.types";
 import { Button, Input, StatusBadge } from "@/components/ui";
 import { cn, formatDate, formatDuration } from "@/lib/utils";
+
+// useLayoutEffect on the client (measure the active tab before paint so the
+// sliding underline never flashes), useEffect on the server to dodge the SSR
+// warning.
+const useIsomorphicLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+const TABS = ["details", "access"] as const;
 
 /**
  * Detail side panel for the selected version. Owner view: rename, edit the
@@ -43,6 +51,30 @@ export function VersionPanel({
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
   const [tab, setTab] = useState<"details" | "access">("details");
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(
+    null
+  );
+
+  // Position the sliding underline under the active tab. Reads layout, so it
+  // must run after render.
+  useIsomorphicLayoutEffect(() => {
+    if (!accessTab) return;
+    const el = tabRefs.current[tab];
+    if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [tab, accessTab]);
+
+  function onTabKeyDown(e: React.KeyboardEvent) {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    const i = TABS.indexOf(tab);
+    const next =
+      e.key === "ArrowRight"
+        ? TABS[(i + 1) % TABS.length]
+        : TABS[(i - 1 + TABS.length) % TABS.length];
+    setTab(next);
+    tabRefs.current[next]?.focus();
+  }
 
   // Reset the form when a different version is selected (adjust-during-render).
   const [prevVersionId, setPrevVersionId] = useState(version.id);
@@ -125,23 +157,36 @@ export function VersionPanel({
       </div>
 
       {accessTab && (
-        <div className="mt-4 flex gap-1" role="tablist" aria-label="Version panel">
-          {(["details", "access"] as const).map((t) => (
+        <div
+          className="relative mt-5 flex gap-6 border-b border-hairline"
+          role="tablist"
+          aria-label="Version panel"
+        >
+          {TABS.map((t) => (
             <button
               key={t}
+              ref={(el) => {
+                tabRefs.current[t] = el;
+              }}
               role="tab"
               aria-selected={tab === t}
+              tabIndex={tab === t ? 0 : -1}
               onClick={() => setTab(t)}
+              onKeyDown={onTabKeyDown}
               className={cn(
-                "border px-3.5 py-1.5 text-button capitalize transition-colors",
-                tab === t
-                  ? "border-hairline-strong bg-surface-2 text-ink"
-                  : "border-transparent text-ink-subtle hover:text-ink"
+                "cursor-pointer pb-3 text-button capitalize transition-colors",
+                tab === t ? "text-ink" : "text-ink-subtle hover:text-ink"
               )}
             >
               {t}
             </button>
           ))}
+          {/* Sliding white underline; width/left measured from the active tab. */}
+          <span
+            aria-hidden
+            className="absolute -bottom-px h-0.5 bg-ink transition-[left,width] duration-300 motion-reduce:transition-none"
+            style={{ left: indicator?.left ?? 0, width: indicator?.width ?? 0 }}
+          />
         </div>
       )}
 
