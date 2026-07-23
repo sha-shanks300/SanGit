@@ -14,10 +14,15 @@ export function DownloadApp({
   variant = "secondary",
   label = "Download",
   className,
+  anchor = false,
 }: {
   variant?: "primary" | "secondary" | "tertiary";
   label?: string;
   className?: string;
+  /** Mark this button as an in-content download anchor: the nav's Download
+   *  button hides itself whenever any anchored button is in view (see
+   *  NavDownload), so the page never shows two download buttons at once. */
+  anchor?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -27,6 +32,7 @@ export function DownloadApp({
         type="button"
         onClick={() => setOpen(true)}
         className={className ?? buttonClasses(variant)}
+        data-download-anchor={anchor ? "" : undefined}
       >
         {label}
       </button>
@@ -64,8 +70,8 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
         <Eyebrow>Get the app</Eyebrow>
         <h2 className="mt-3 text-card-title text-ink">SanGit for Windows</h2>
         <p className="mt-2 text-body-sm text-ink-muted">
-          The tray app watches your FL Studio project folders and turns every
-          save into a version on your account.
+          Keep making music the way you always do. The tray app watches your FL
+          Studio folders and turns every save into a version on your account.
         </p>
 
         <a
@@ -83,7 +89,7 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
           <p className="text-body-sm text-ink">This app is safe to run.</p>
           <p className="mt-1 text-caption text-ink-muted">
             Windows may show a blue “Windows protected your PC” screen the first
-            time — that just means it isn’t code-signed yet, which is normal for
+            time. That just means it isn’t code-signed yet, which is normal for
             small indie apps. Click <span className="text-ink">More info</span> →{" "}
             <span className="text-ink">Run anyway</span> and you’re set.
           </p>
@@ -93,7 +99,7 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
           <li>
             <span className="font-mono text-ink-tertiary">1.</span> Run the
             downloaded{" "}
-            <span className="font-mono text-ink">SanGitSetup.exe</span> — a quick
+            <span className="font-mono text-ink">SanGitSetup.exe</span>. A quick
             installer adds SanGit to your system tray.
           </li>
           <li>
@@ -103,7 +109,7 @@ function DownloadDialog({ onClose }: { onClose: () => void }) {
           </li>
           <li>
             <span className="font-mono text-ink-tertiary">3.</span> Save in FL
-            Studio — SanGit does the rest.
+            Studio, and SanGit does the rest.
           </li>
         </ol>
 

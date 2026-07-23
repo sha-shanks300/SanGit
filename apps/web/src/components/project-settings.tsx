@@ -138,9 +138,11 @@ export function ProjectSettings({
           {error && <p className="mt-2 text-caption text-primary">{error}</p>}
 
           <div className="mt-4 flex items-center justify-between">
-            <span className="text-body-sm text-ink">Show on profile</span>
-            {/* Toggle button: stays pressed (surface lift + green) while
-                shown; pressing again releases it back to private. */}
+            <span className="text-body-sm text-ink">Visibility</span>
+            {/* State toggle (not an action button): stays pressed (surface
+                lift + green) while public; pressing again returns it to
+                private. This is the master public switch — it also governs
+                whether /p/[slug] is reachable, not just the profile listing. */}
             <button
               type="button"
               aria-pressed={isPublic}
@@ -152,13 +154,13 @@ export function ProjectSettings({
                   : "border-hairline text-ink-subtle hover:text-ink"
               )}
             >
-              {isPublic ? "Shown" : "Hidden"}
+              {isPublic ? "Public" : "Private"}
             </button>
           </div>
           {isPublic && (
             <>
               <div className="mt-3 flex items-center justify-between">
-                <span className="text-body-sm text-ink">Show version history</span>
+                <span className="text-body-sm text-ink">Version history</span>
                 <button
                   type="button"
                   aria-pressed={showHistory}
