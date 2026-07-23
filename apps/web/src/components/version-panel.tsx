@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Version } from "@/lib/database.types";
 import { Button, Input, StatusBadge } from "@/components/ui";
-import { formatDate, formatDuration } from "@/lib/utils";
+import { cn, formatDate, formatDuration } from "@/lib/utils";
 
 /**
  * Detail side panel for the selected version. Owner view: rename, edit the
@@ -19,6 +19,7 @@ export function VersionPanel({
   children,
   shareToken,
   onRequestDelete,
+  accessTab,
 }: {
   version: Version;
   isOwner: boolean;
@@ -29,6 +30,9 @@ export function VersionPanel({
   shareToken?: string;
   /** Owner-only: opens the delete-version confirmation (dialog lives in the parent). */
   onRequestDelete?: () => void;
+  /** Owner-only: content for the "Access" tab (.flp passkey). When provided the
+   *  panel splits into Details/Access tabs; when absent it stays a single panel. */
+  accessTab?: React.ReactNode;
 }) {
   const [name, setName] = useState(version.display_name ?? "");
   const [date, setDate] = useState(version.uploaded_at.slice(0, 10));
@@ -38,6 +42,7 @@ export function VersionPanel({
   const [key, setKey] = useState("");
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"details" | "access">("details");
 
   // Reset the form when a different version is selected (adjust-during-render).
   const [prevVersionId, setPrevVersionId] = useState(version.id);
@@ -119,6 +124,29 @@ export function VersionPanel({
         )}
       </div>
 
+      {accessTab && (
+        <div className="mt-4 flex gap-1" role="tablist" aria-label="Version panel">
+          {(["details", "access"] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={cn(
+                "border px-3.5 py-1.5 text-button capitalize transition-colors",
+                tab === t
+                  ? "border-hairline-strong bg-surface-2 text-ink"
+                  : "border-transparent text-ink-subtle hover:text-ink"
+              )}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(!accessTab || tab === "details") && (
+        <>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-body-sm">
         <dt className="text-ink-tertiary">Uploaded</dt>
         <dd className="text-ink-muted">{formatDate(version.uploaded_at)}</dd>
@@ -208,6 +236,12 @@ export function VersionPanel({
       )}
 
       {children}
+        </>
+      )}
+
+      {accessTab && tab === "access" && (
+        <div className="mt-5">{accessTab}</div>
+      )}
     </div>
   );
 }
