@@ -60,7 +60,7 @@ export function ProjectRows() {
 
   if (projects === null) {
     return (
-      <section className="mt-10 border-t border-hairline pt-8">
+      <section className="mt-12">
         <ProjectsSectionHeading title="Projects" />
         <p className="mt-6 text-body-sm text-ink-subtle">Loading projects…</p>
       </section>
@@ -69,14 +69,14 @@ export function ProjectRows() {
 
   if (projects.length === 0) {
     return (
-      <section className="mt-10 border-t border-hairline">
+      <section className="mt-12">
         <OnboardingChecklist />
       </section>
     );
   }
 
   return (
-    <section className="mt-10 border-t border-hairline pt-8">
+    <section className="mt-12">
       <ProjectsSectionHeading title="Projects" count={projects.length} />
       <div className="mt-6 flex flex-col gap-3">
         {projects.map((p) => (
