@@ -121,11 +121,16 @@ export function ProjectView({
               <h1 className="text-headline text-ink">
                 {project.title}
               </h1>
-              {project.is_public ? (
-                <StatusBadge tone="success">public</StatusBadge>
-              ) : (
-                <StatusBadge>private</StatusBadge>
-              )}
+              {/* Owner-only: the visibility tag is a dashboard cue for the
+                  producer. Visitors on /p/[slug] never see it (they only
+                  reach public projects anyway, so it would always read
+                  "public" — redundant). Matches the /u/[username] profile. */}
+              {isOwner &&
+                (project.is_public ? (
+                  <StatusBadge tone="success">public</StatusBadge>
+                ) : (
+                  <StatusBadge>private</StatusBadge>
+                ))}
               <FavoriteButton projectId={project.id} />
             </div>
             <p className="mt-1 text-body-sm text-ink-subtle">

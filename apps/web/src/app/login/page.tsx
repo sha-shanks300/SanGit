@@ -47,7 +47,7 @@ function LoginForm() {
     <Card className="w-full max-w-sm">
       <h1 className="text-card-title font-medium text-ink">Sign in</h1>
       <p className="mt-1 text-body-sm text-ink-subtle">
-        Your studio, your versions.
+        Every take, right where you left it.
       </p>
 
       <Button className="mt-6 w-full" variant="secondary" onClick={signInWithGoogle}>
