@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getPublicProfile } from "@/lib/public-project";
 import { TopNav } from "@/components/top-nav";
-import { Eyebrow } from "@/components/ui";
+import { ProjectsSectionHeading } from "@/components/section-heading";
 import { ProfileHeader } from "@/components/profile-header";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
 
@@ -89,14 +89,17 @@ export default async function ProfilePage({
           onPublicPage
         />
 
-        <div className="mt-12">
-          <Eyebrow>Public projects</Eyebrow>
-          {!projects || projects.length === 0 ? (
-            <p className="mt-4 text-body-sm text-ink-subtle">
+        <section className="mt-10 border-t border-hairline pt-8">
+          <ProjectsSectionHeading
+            title="Public projects"
+            count={projects.length > 0 ? projects.length : undefined}
+          />
+          {projects.length === 0 ? (
+            <p className="mt-6 text-body-sm text-ink-subtle">
               Nothing public yet.
             </p>
           ) : (
-            <div className="mt-4 flex flex-col gap-3">
+            <div className="mt-6 flex flex-col gap-3">
               {projects.map((p) => (
                 <ProjectRow
                   key={p.id}
@@ -107,7 +110,7 @@ export default async function ProfilePage({
               ))}
             </div>
           )}
-        </div>
+        </section>
       </main>
     </>
   );
