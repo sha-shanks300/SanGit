@@ -91,6 +91,17 @@ export default async function Home() {
         </section>
 
         <div className="mx-auto w-full max-w-[1280px] px-6">
+        {/* What it is — a plain-language explainer so visitors understand
+            SanGit before the checklist asks them to sign in. */}
+        <section className="border-b border-hairline py-24">
+          <Eyebrow>What it is</Eyebrow>
+          <p className="mt-6 max-w-3xl text-subhead text-ink">
+            SanGit is version control for your FL Studio projects. A small tray
+            app watches your folders, turns every save into a labelled version
+            on its own branch, and renders each one to audio you can play back,
+            so no idea is ever lost and any version is one click from sharing.
+          </p>
+        </section>
         {/* Get started — the four-step onboarding checklist that every
             "Get started" button scrolls to. Static: the landing is
             logged-out only, so there's no live progress to track. */}
@@ -196,8 +207,8 @@ export default async function Home() {
             Your best version is one save away.
           </h2>
           <div className="flex items-center gap-3">
-            <Link href="/#get-started" className={buttonClasses("primary")}>
-              Get started
+            <Link href="/login" className={buttonClasses("primary")}>
+              Sign in
             </Link>
             <DownloadApp variant="secondary" label="Download for Windows" anchor />
           </div>
