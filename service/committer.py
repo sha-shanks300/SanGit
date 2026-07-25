@@ -66,5 +66,8 @@ def commit(flp_path: str, display_name: str | None) -> int | None:
         display_name=display_name or None,
         sha256=digest,
     )
+    # Remember this content as committed for this path so a later FL-close
+    # won't prompt again unless the file actually changes.
+    store.record_committed(str(src), digest)
     log.info("queued commit #%s %s (%s)", commit_id, src.name, digest[:12])
     return commit_id

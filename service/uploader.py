@@ -15,12 +15,20 @@ log = logging.getLogger("sangit.uploader")
 
 class UploadWorker:
     def __init__(self, client: ApiClient, poll_secs: float = 3.0,
-                 on_auth_error=None):
+                 on_auth_error=None, on_settled=None):
         self._client = client
         self._poll = poll_secs
         self._on_auth_error = on_auth_error
+        self._on_settled = on_settled  # (commit_id: int, ok: bool) at terminal state
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def _settle(self, commit_id: int, ok: bool):
+        if self._on_settled:
+            try:
+                self._on_settled(commit_id, ok)
+            except Exception:
+                log.exception("on_settled callback failed for commit #%s", commit_id)
 
     def start(self):
         self._thread.start()
@@ -49,6 +57,7 @@ class UploadWorker:
                 else:
                     log.error("commit #%s rejected: %s", row["id"], e)
                     store.commit_retry(row["id"], str(e), max_attempts=1)
+                    self._settle(row["id"], False)  # terminal: non-retryable
             except Exception as e:
                 log.exception("commit #%s unexpected error", row["id"])
                 store.commit_retry(row["id"], str(e))
@@ -57,6 +66,7 @@ class UploadWorker:
         snapshot = Path(row["snapshot_path"])
         if not snapshot.exists():
             store.commit_retry(row["id"], "snapshot missing", max_attempts=1)
+            self._settle(row["id"], False)  # terminal
             return
 
         init = self._client.init_upload(
@@ -71,6 +81,7 @@ class UploadWorker:
             log.info("commit #%s deduplicated (no change since tip)", row["id"])
             store.commit_done(row["id"], init.get("version_id"), duplicate=True)
             snapshot.unlink(missing_ok=True)
+            self._settle(row["id"], True)  # terminal: nothing to upload
             return
 
         self._client.upload_file(init["upload_url"], str(snapshot),
@@ -88,3 +99,4 @@ class UploadWorker:
         store.add_render(init["version_id"], str(snapshot))
         log.info("commit #%s uploaded as version %s; render queued",
                  row["id"], init["version_id"])
+        self._settle(row["id"], True)  # terminal: .flp is safely uploaded
