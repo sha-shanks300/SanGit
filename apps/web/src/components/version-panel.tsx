@@ -88,14 +88,21 @@ export function VersionPanel({
   async function save() {
     setSaving(true);
     const supabase = createClient();
-    const uploadedAt = new Date(`${date}T00:00:00`);
+    // Only touch uploaded_at when the DATE field actually changed — otherwise a
+    // plain rename would rewrite it (dropping the time-of-day to midnight and
+    // reordering the version). When the date does change, keep the original
+    // time-of-day so the version doesn't jump to the start of its day.
+    const dateChanged = date !== version.uploaded_at.slice(0, 10);
+    const rescheduled = dateChanged
+      ? new Date(`${date}${version.uploaded_at.slice(10)}`)
+      : null;
     await supabase
       .from("versions")
       .update({
         display_name: name.trim() || null,
-        ...(isNaN(uploadedAt.getTime())
-          ? {}
-          : { uploaded_at: uploadedAt.toISOString() }),
+        ...(rescheduled && !isNaN(rescheduled.getTime())
+          ? { uploaded_at: rescheduled.toISOString() }
+          : {}),
       })
       .eq("id", version.id);
     setSaving(false);
