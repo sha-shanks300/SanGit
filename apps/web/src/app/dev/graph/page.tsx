@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { notFound } from "next/navigation";
 import { VersionGraph } from "@/components/version-graph";
+import { TimelineTree } from "@/components/timeline-tree";
 import { Eyebrow, Panel } from "@/components/ui";
 import type { Branch, Version } from "@/lib/database.types";
 
 /**
- * Dev-only playground: renders the physics graph with mock data (a main
- * branch, two forks, mixed render states) so it can be styled and verified
- * without auth or a live project. 404s in production builds.
+ * Dev-only playground: renders the timeline tree and the physics graph with
+ * mock data (a main branch, two forks with an explicit fork anchor, mixed
+ * render states) so both can be styled and verified without auth or a live
+ * project. 404s in production builds.
  */
 
 const t = (daysAgo: number, hour = 12) =>
@@ -59,7 +61,9 @@ const mkVersion = (
 
 const branches: Branch[] = [
   mkBranch("b-main", "midnight-drive", null),
-  mkBranch("b-alt", "midnight-drive-halftime", "b-main"),
+  // explicit fork anchor: b-alt forks from v2 (a sibling of v3), not the
+  // timestamp guess (v3) — exercises fork_version_id in both views.
+  mkBranch("b-alt", "midnight-drive-halftime", "b-main", "v2"),
   mkBranch("b-vox", "midnight-drive-vocals", "b-main"),
 ];
 
@@ -85,6 +89,19 @@ export default function DevGraphPage() {
       <h1 className="mt-1 text-headline text-ink">
         Version graph playground
       </h1>
+      <Panel className="mt-8 overflow-hidden">
+        <Eyebrow>Timeline (tree)</Eyebrow>
+        <div className="mt-4">
+          <TimelineTree
+            branches={branches}
+            versions={versions}
+            mainVersionId="v8"
+            selectedId={selectedId}
+            onSelect={(v) => setSelectedId(v.id)}
+          />
+        </div>
+      </Panel>
+
       <Panel className="mt-8 overflow-hidden">
         <VersionGraph
           branches={branches}
