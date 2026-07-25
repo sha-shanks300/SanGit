@@ -41,15 +41,31 @@ def mp3_duration(path: Path) -> float | None:
 
 class RenderWorker:
     def __init__(self, client: ApiClient, cfg: dict, poll_secs: float = 10.0,
-                 on_auth_error=None):
+                 on_auth_error=None, on_render_started=None, on_render_settled=None):
         self._client = client
         self._cfg = cfg
         self._poll = poll_secs
         self._on_auth_error = on_auth_error
+        self._on_render_started = on_render_started  # () when FL is about to render
+        self._on_render_settled = on_render_settled  # (ok: bool) when the attempt ends
         self._stop = threading.Event()
         self._force = threading.Event()  # tray "Render now" sets this
         self._thread = threading.Thread(target=self._run, daemon=True)
         self.current: str | None = None  # for tray status
+
+    def _notify_started(self):
+        if self._on_render_started:
+            try:
+                self._on_render_started()
+            except Exception:
+                log.exception("on_render_started callback failed")
+
+    def _notify_settled(self, ok: bool):
+        if self._on_render_settled:
+            try:
+                self._on_render_settled(ok)
+            except Exception:
+                log.exception("on_render_settled callback failed")
 
     def start(self):
         self._thread.start()
@@ -74,6 +90,8 @@ class RenderWorker:
         version_id = row["version_id"]
         snapshot = Path(row["snapshot_path"])
         self.current = snapshot.name
+        started = False  # did FL actually launch this attempt (for the splash)?
+        ok = False
         try:
             if not snapshot.exists():
                 self._fail(row, "snapshot missing")
@@ -81,12 +99,15 @@ class RenderWorker:
 
             fl_exe = self._cfg["fl_executable"]
             if not Path(fl_exe).exists():
-                # Config problem, not a job problem — retry later, don't burn attempts.
+                # Config problem, not a job problem — retry later, don't burn
+                # attempts, and don't flash the splash (FL isn't opening).
                 log.error("FL executable not found: %s", fl_exe)
                 time.sleep(60)
                 return
 
             store.render_status(row["id"], "rendering")
+            started = True
+            self._notify_started()  # splash: "Exporting…" — FL is about to open
             mp3_path = snapshot.with_suffix(".mp3")
             log.info("rendering %s", snapshot.name)
             try:
@@ -111,6 +132,7 @@ class RenderWorker:
             log.info("render uploaded for version %s", version_id)
             snapshot.unlink(missing_ok=True)
             mp3_path.unlink(missing_ok=True)
+            ok = True
         except ApiError as e:
             if e.status == 401:
                 # Device revoked: park the finished render, don't burn attempts.
@@ -126,6 +148,8 @@ class RenderWorker:
             self._retry(row, str(e))
         finally:
             self.current = None
+            if started:
+                self._notify_settled(ok)  # splash: done / failed (retries later)
 
     def _retry(self, row, error: str, report: bool = True):
         failed = store.render_retry(row["id"], error)
