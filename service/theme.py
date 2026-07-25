@@ -18,6 +18,8 @@ from PySide6.QtWidgets import QLabel, QWidget
 log = logging.getLogger("sangit.theme")
 
 LOGO_PNG = Path(__file__).resolve().parent / "assets" / "logoapp.png"
+FONT_TTF = Path(__file__).resolve().parent / "assets" / "SpaceGrotesk.ttf"
+LOOP_WEBP = Path(__file__).resolve().parent / "assets" / "logoloop.webp"
 
 # ---- color tokens (DESIGN.md) ----
 CANVAS = "#181818"
@@ -77,6 +79,31 @@ def symbol_font(size_pt: int) -> QFont:
                "Segoe UI")
     f = QFont(fam, size_pt)
     f.setWeight(QFont.Weight.Normal)
+    return f
+
+
+def load_bundled_fonts() -> None:
+    """Register the bundled brand face (Space Grotesk) so the wordmark and
+    display type match the web app even when it isn't installed system-wide.
+    Call once, after the QApplication exists and *before* qss()/font() so the
+    family cache resolves with it present."""
+    global _families
+    if not FONT_TTF.exists():
+        log.warning("bundled font missing: %s", FONT_TTF.name)
+        return
+    if QFontDatabase.addApplicationFont(str(FONT_TTF)) == -1:
+        log.warning("failed to register bundled font %s", FONT_TTF.name)
+        return
+    _families = None  # re-resolve now that Space Grotesk is available
+
+
+def wordmark_font(size_pt: int) -> QFont:
+    """The 'SanGit' wordmark: display face at medium weight with tight
+    tracking, mirroring the web app's top-nav wordmark (font-display,
+    font-medium, tracking-tight)."""
+    f = QFont(families()["display"], size_pt)
+    f.setWeight(QFont.Weight.Medium)
+    f.setLetterSpacing(QFont.SpacingType.PercentageSpacing, 97.0)
     return f
 
 

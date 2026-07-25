@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import webbrowser
+from pathlib import Path
 
 from PySide6.QtCore import QMetaObject, Qt, QTimer, Signal, QObject
 from PySide6.QtGui import QAction
@@ -28,9 +29,11 @@ import theme
 import updater
 import version
 from api_client import ApiClient, ApiError
-from popup import PopupManager
+from fl_monitor import FLMonitor
+from popup import CommitToast
 from render_queue import RenderWorker
 from status_window import StatusWindow
+from upload_window import UploadSplash
 from uploader import UploadWorker
 from watcher import FolderWatcher
 
@@ -75,41 +78,199 @@ class App(QObject):
     heartbeat_ok = Signal(object)  # carries the username from a good ping
     update_available = Signal(str)  # carries the newer version string
     import_done = Signal(int)  # count of freshly imported projects
+    commit_enqueued = Signal(int)  # commit id, once snapshotted+queued (worker thread)
+    commit_settled = Signal(int, bool)  # commit id, ok — terminal upload state (worker thread)
+    render_started = Signal()  # FL about to relaunch to export (render thread)
+    render_settled = Signal(bool)  # ok — the render attempt ended (render thread)
+    fl_closed = Signal()  # FL fully quit — end of a session (monitor thread)
 
     def __init__(self, cfg: dict, qapp: QApplication):
         super().__init__()
         self.cfg = cfg
         self.qapp = qapp
         self.client = ApiClient(cfg["api_url"], cfg["device_token"])
-        self.uploader = UploadWorker(self.client, on_auth_error=self._on_auth_error)
-        self.renderer = RenderWorker(self.client, cfg, on_auth_error=self._on_auth_error)
-        self.popups = PopupManager(self._do_commit,
-                                   timeout_secs=cfg["popup_timeout_secs"])
+        self.uploader = UploadWorker(self.client, poll_secs=2.0,
+                                     on_auth_error=self._on_auth_error,
+                                     on_settled=self._on_commit_settled_threadsafe)
+        self.renderer = RenderWorker(self.client, cfg, poll_secs=2.0,
+                                     on_auth_error=self._on_auth_error,
+                                     on_render_started=self._on_render_started_threadsafe,
+                                     on_render_settled=self._on_render_settled_threadsafe)
         self.watcher = FolderWatcher(cfg["watch_folders"], self._on_save,
                                      debounce_secs=cfg["debounce_secs"])
+        self.fl_monitor = FLMonitor(cfg["fl_process_names"],
+                                    self._on_fl_closed_threadsafe, poll_secs=2.0)
         self.watching = True
         self.tray: QSystemTrayIcon | None = None
         self.status_window: StatusWindow | None = None
+        self.upload_splash: UploadSplash | None = None
         self._watch_action: QAction | None = None
         self._auth_alerted = False
         self._revoked = False
         self._update_version = ""
         self._last_update_check = 0.0
+        # commit-on-close state: .flp paths saved this session, the per-project
+        # queue we prompt through on close, the toast currently showing, and the
+        # single card that spans one commit's upload -> export -> done.
+        self._dirty: set[str] = set()
+        self._close_queue: list[str] = []
+        self._active_toast: CommitToast | None = None
+        self._card_commit_id: int | None = None
+        self._card_settled = True
+        self._card_gen = 0
+        self._renders_active = 0  # renders currently holding FL open
 
-        self.save_detected.connect(self.popups.ask)
+        self.save_detected.connect(self._record_dirty)
         self.auth_error.connect(self._handle_auth_error)
         self.heartbeat_ok.connect(self._on_heartbeat_ok)
         self.update_available.connect(self._handle_update_available)
         self.import_done.connect(self._on_import_done)
+        self.commit_enqueued.connect(self._on_commit_enqueued)
+        self.commit_settled.connect(self._on_commit_settled)
+        self.render_started.connect(self._on_render_started)
+        self.render_settled.connect(self._on_render_settled)
+        self.fl_closed.connect(self._on_fl_closed)
 
     # watcher thread -> Qt main thread via signal
     def _on_save(self, flp_path: str):
         if self.watching:
-            self.save_detected.emit(flp_path)
+            self.save_detected.emit(flp_path)  # -> _record_dirty on main thread
 
-    # toast (main thread) hands off to a worker thread inside PopupManager
-    def _do_commit(self, flp_path: str, display_name: str | None):
-        committer.commit(flp_path, display_name)
+    # main thread: a save just records the file as changed this session; the
+    # commit prompt waits until FL closes.
+    def _record_dirty(self, flp_path: str):
+        self._dirty.add(flp_path)
+
+    # ---- commit-on-close flow ----
+    # FL closed -> for each changed project (deduped), show a commit toast in
+    # sequence; on Commit (or auto-commit) run the pipeline behind ONE card
+    # that spans upload -> export (FL reopens) -> done, then move to the next.
+    def _on_fl_closed_threadsafe(self):
+        self.fl_closed.emit()  # monitor thread -> main thread
+
+    def _on_fl_closed(self):
+        if not self.watching or not self._dirty:
+            self._dirty.clear()
+            return
+        paths = sorted(self._dirty)
+        self._dirty.clear()
+        queue = []
+        for p in paths:
+            src = Path(p)
+            if not src.exists():
+                continue
+            try:
+                if committer.sha256_of(src) == store.last_committed_sha(p):
+                    continue  # unchanged since its last commit — don't prompt
+            except OSError:
+                continue
+            queue.append(p)
+        self._close_queue = queue
+        self._process_close_queue()
+
+    def _process_close_queue(self):
+        """Show the next project's commit toast (one at a time)."""
+        if self._active_toast is not None or not self._close_queue:
+            return
+        flp = self._close_queue.pop(0)
+        toast = CommitToast(flp, timeout_secs=15, on_done=self._on_toast_done,
+                            timeout_action="commit")  # auto-commits if ignored
+        self._active_toast = toast
+        toast.open()
+
+    def _on_toast_done(self, flp_path: str, result: str | None):
+        # main thread (toast fade-out). None = Skip -> just move to next project.
+        self._active_toast = None
+        if result is None:
+            self._process_close_queue()
+            return
+        self._begin_card()  # one card for this commit's whole lifecycle
+        threading.Thread(target=self._run_commit,
+                         args=(flp_path, result or None), daemon=True).start()
+
+    def _run_commit(self, flp_path: str, name: str | None):
+        try:
+            commit_id = committer.commit(flp_path, name)
+        except Exception:
+            log.exception("commit failed for %s", flp_path)
+            commit_id = None
+        if commit_id is not None:
+            self.commit_enqueued.emit(commit_id)
+        else:
+            self.commit_settled.emit(-1, False)  # never queued -> fail the card
+
+    # ---- the single card: upload -> export -> done ----
+    def _begin_card(self):
+        if self.upload_splash is None:
+            self.upload_splash = UploadSplash()
+        self._card_commit_id = None
+        self._card_settled = False
+        self._card_gen += 1
+        gen = self._card_gen
+        self.upload_splash.set_state("uploading")
+        self.upload_splash.show_centered()
+        # allow for the .flp upload plus a full FL render before giving up
+        timeout = int((self.cfg.get("render_timeout_secs", 300) + 30) * 1000)
+        QTimer.singleShot(timeout, lambda: self._card_fallback(gen))
+
+    def _card_active(self) -> bool:
+        return (self.upload_splash is not None and self.upload_splash.isVisible()
+                and not self._card_settled)
+
+    def _card_finish(self, ok: bool):
+        if not self._card_active():
+            return
+        self._card_settled = True
+        self.upload_splash.set_state("done" if ok else "failed")
+        QTimer.singleShot(2200, self._process_close_queue)  # then next project
+
+    def _card_fallback(self, gen: int):
+        """Nothing finished in time (offline/slow, or a render that never
+        returned): close quietly — the SQLite queues finish it in background."""
+        if gen == self._card_gen and self._card_active():
+            self._card_settled = True
+            self.upload_splash.close()
+            QTimer.singleShot(200, self._process_close_queue)
+
+    def _on_commit_enqueued(self, commit_id: int):
+        self._card_commit_id = commit_id  # bind so we know which settle is ours
+
+    def _on_commit_settled_threadsafe(self, commit_id: int, ok: bool):
+        self.commit_settled.emit(commit_id, ok)  # uploader thread -> main thread
+
+    def _on_commit_settled(self, commit_id: int, ok: bool):
+        if not self._card_active():
+            return  # e.g. an import commit — no card to drive
+        mine = commit_id == self._card_commit_id or self._card_commit_id is None
+        if not ok and mine:
+            self._card_finish(False)  # .flp upload failed -> card fails
+        # on success keep the card open; the render worker picks up the queued
+        # render within ~2s and fires render_started (card flips to exporting).
+
+    def _on_render_started_threadsafe(self):
+        self.render_started.emit()  # render thread -> main thread
+
+    def _on_render_settled_threadsafe(self, ok: bool):
+        self.render_settled.emit(ok)
+
+    def _on_render_started(self):
+        # Any render relaunches FL — pause the close-detector so that render's
+        # own FL close is never mistaken for the user finishing a session.
+        self._renders_active += 1
+        self.fl_monitor.pause()
+        if self._card_active():
+            self.upload_splash.set_state("exporting")  # FL is reopening now
+
+    def _on_render_settled(self, ok: bool):
+        self._renders_active = max(0, self._renders_active - 1)
+        if self._renders_active == 0:
+            QTimer.singleShot(3000, self._maybe_resume_monitor)  # once FL is gone
+        if self._card_active():
+            self._card_finish(ok)
+
+    def _maybe_resume_monitor(self):
+        if self._renders_active == 0:
+            self.fl_monitor.resume()
 
     # status-window "Import existing project…" -> commit pre-existing .flp(s).
     # Off-thread: hashing a large .flp shouldn't freeze the UI. Reuses the
@@ -387,6 +548,7 @@ class App(QObject):
         self.uploader.start()
         self.renderer.start()
         self.watcher.start()
+        self.fl_monitor.start()
         self._build_tray()
         self._install_ctrl_handler()
         self._heartbeat = QTimer(self)
@@ -398,15 +560,42 @@ class App(QObject):
                  self.cfg["watch_folders"])
         self.qapp.exec()  # blocks until quit (tray menu or Ctrl+C)
         self.watcher.stop()
+        self.fl_monitor.stop()
         self.uploader.stop()
         self.renderer.stop()
         log.info("service stopped")
+
+
+def _preview_upload():
+    """Dev-only: show the splash and cycle its states so the window can be
+    designed without the real pipeline. Tokens on the command line:
+    `export` previews the FL-render copy (else the upload copy); `fail`
+    previews the failure end-state (else success)."""
+    from upload_window import UploadSplash
+
+    qapp = QApplication(sys.argv)
+    theme.load_bundled_fonts()
+    qapp.setWindowIcon(theme.app_icon())
+    qapp.setStyleSheet(theme.qss())
+
+    phase = "exporting" if "export" in sys.argv else "uploading"
+    end = "failed" if "fail" in sys.argv else "done"
+    w = UploadSplash()
+    w.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)  # so destroyed->quit fires
+    w.set_state(phase)
+    w.show_centered()
+    QTimer.singleShot(3500, lambda: w.set_state(end))
+    w.destroyed.connect(qapp.quit)
+    qapp.exec()
 
 
 def main():
     _set_app_identity()
     _setup_logging()
     log.info("SanGit v%s starting", version.__version__)
+    if "--preview-upload" in sys.argv:
+        _preview_upload()
+        return
     if _already_running():
         log.error("SanGit service is already running (check the tray, next "
                   "to the clock) — not starting a second copy.")
@@ -418,6 +607,7 @@ def main():
 
     qapp = QApplication(sys.argv)
     qapp.setQuitOnLastWindowClosed(False)  # tray app: dialogs close, we stay
+    theme.load_bundled_fonts()  # register Space Grotesk before qss()/font() cache
     qapp.setWindowIcon(theme.app_icon())
     qapp.setStyleSheet(theme.qss())
 
