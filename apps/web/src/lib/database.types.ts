@@ -51,6 +51,7 @@ export type Branch = {
   user_id: string;
   name: string;
   parent_branch_id: string | null;
+  fork_version_id: string | null;
   created_at: string;
 }
 

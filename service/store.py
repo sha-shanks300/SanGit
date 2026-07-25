@@ -20,6 +20,9 @@ create table if not exists commits (
   project_title text not null,
   display_name text,
   sha256 text not null,
+  flp_path text,                 -- source .flp (to update its active branch)
+  branch_id text,               -- active branch to commit onto (null = by filename)
+  new_branch_name text,         -- set => "Branch & commit": fork a new branch
   status text not null default 'pending',  -- pending | done | duplicate | error
   attempts integer not null default 0,
   next_attempt_at real not null default 0,
@@ -42,7 +45,20 @@ create table if not exists file_state (
   sha256 text not null,            -- content hash at its last commit
   committed_at real not null
 );
+create table if not exists file_branch (
+  flp_path text primary key,       -- absolute path of a watched .flp
+  branch_id text not null,         -- the branch this file currently commits onto
+  updated_at real not null
+);
 """
+
+# Additive columns for databases created before these existed. `create table
+# if not exists` won't alter an existing table, so add them idempotently.
+_MIGRATIONS = [
+    ("commits", "flp_path", "text"),
+    ("commits", "branch_id", "text"),
+    ("commits", "new_branch_name", "text"),
+]
 
 
 @contextmanager
@@ -59,18 +75,45 @@ def _conn():
 def init() -> None:
     with _conn() as c:
         c.executescript(SCHEMA)
+        for table, col, decl in _MIGRATIONS:
+            try:
+                c.execute(f"alter table {table} add column {col} {decl}")
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def add_commit(snapshot_path: str, file_name: str, project_id: str,
-               project_title: str, display_name: str | None, sha256: str) -> int:
+               project_title: str, display_name: str | None, sha256: str,
+               flp_path: str | None = None, branch_id: str | None = None,
+               new_branch_name: str | None = None) -> int:
     with _conn() as c:
         cur = c.execute(
             "insert into commits (snapshot_path, file_name, project_id, project_title,"
-            " display_name, sha256, created_at) values (?,?,?,?,?,?,?)",
+            " display_name, sha256, flp_path, branch_id, new_branch_name, created_at)"
+            " values (?,?,?,?,?,?,?,?,?,?)",
             (snapshot_path, file_name, project_id, project_title, display_name,
-             sha256, time.time()),
+             sha256, flp_path, branch_id, new_branch_name, time.time()),
         )
         return cur.lastrowid
+
+
+def file_branch_get(flp_path: str) -> str | None:
+    with _conn() as c:
+        row = c.execute("select branch_id from file_branch where flp_path=?",
+                        (flp_path,)).fetchone()
+        return row["branch_id"] if row else None
+
+
+def file_branch_set(flp_path: str, branch_id: str) -> None:
+    """Remember which branch this .flp now commits onto (set after a normal
+    commit and after a Branch & commit, so later saves follow the same line)."""
+    with _conn() as c:
+        c.execute(
+            "insert into file_branch (flp_path, branch_id, updated_at) values (?,?,?)"
+            " on conflict(flp_path) do update set branch_id=excluded.branch_id,"
+            " updated_at=excluded.updated_at",
+            (flp_path, branch_id, time.time()),
+        )
 
 
 def next_pending_commit() -> sqlite3.Row | None:

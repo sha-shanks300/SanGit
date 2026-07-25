@@ -18,12 +18,18 @@ const t = (daysAgo: number, hour = 12) =>
 const P = "00000000-0000-4000-8000-0000000000aa";
 const U = "00000000-0000-4000-8000-0000000000bb";
 
-const mkBranch = (id: string, name: string, parent: string | null): Branch => ({
+const mkBranch = (
+  id: string,
+  name: string,
+  parent: string | null,
+  fork: string | null = null,
+): Branch => ({
   id,
   project_id: P,
   user_id: U,
   name,
   parent_branch_id: parent,
+  fork_version_id: fork,
   created_at: t(20),
 });
 
