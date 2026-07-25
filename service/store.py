@@ -37,6 +37,11 @@ create table if not exists renders (
   error text,
   created_at real not null
 );
+create table if not exists file_state (
+  flp_path text primary key,       -- absolute path of a watched .flp
+  sha256 text not null,            -- content hash at its last commit
+  committed_at real not null
+);
 """
 
 
@@ -157,6 +162,25 @@ def requeue_errored_commits() -> None:
     with _conn() as c:
         c.execute("update commits set status='pending', attempts=0,"
                   " next_attempt_at=0, error=null where status='error'")
+
+
+def record_committed(flp_path: str, sha256: str) -> None:
+    """Remember the content hash we last committed for this .flp, so a later
+    FL-close can skip prompting when nothing changed since."""
+    with _conn() as c:
+        c.execute(
+            "insert into file_state (flp_path, sha256, committed_at) values (?,?,?)"
+            " on conflict(flp_path) do update set sha256=excluded.sha256,"
+            " committed_at=excluded.committed_at",
+            (flp_path, sha256, time.time()),
+        )
+
+
+def last_committed_sha(flp_path: str) -> str | None:
+    with _conn() as c:
+        row = c.execute("select sha256 from file_state where flp_path=?",
+                        (flp_path,)).fetchone()
+        return row["sha256"] if row else None
 
 
 def counts() -> dict:

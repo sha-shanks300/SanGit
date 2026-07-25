@@ -1,20 +1,18 @@
 """Commit prompt: a frameless topmost toast (bottom-right, near the tray)
-with an optional version-name field. Fades in/out, shows a draining
-countdown hairline, and auto-dismisses (= skip) after a timeout — unless
-the user starts typing, which pauses the countdown.
+with an optional version-name field. Fades in/out and shows a draining
+countdown hairline. In the commit-on-close flow the countdown AUTO-COMMITS
+when it drains (so a finished session is never silently lost); typing pauses
+it, and Skip is the only way to discard. The App shows one toast at a time
+and decides what happens on the outcome.
 
-All UI lives on the Qt main thread; PopupManager queues save events (its
-`ask` slot is signal-fed from the watchdog thread) and shows one toast at
-a time. The commit callback runs on a worker thread so hashing/copying
-never blocks the UI.
+All UI lives on the Qt main thread.
 """
 
 import logging
-import threading
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, Slot
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QVBoxLayout, QWidget)
@@ -27,53 +25,16 @@ WIDTH = 400
 PAD = 20  # card interior padding
 
 
-class PopupManager:
-    """Queues save events and shows one CommitToast at a time."""
-
-    def __init__(self, on_commit: Callable[[str, str | None], None],
-                 timeout_secs: int = 30):
-        self._on_commit = on_commit
-        self._timeout = timeout_secs
-        self._pending: list[str] = []
-        self._active: CommitToast | None = None
-
-    @Slot(str)
-    def ask(self, flp_path: str):
-        self._pending.append(flp_path)
-        if self._active is None:
-            self._show_next()
-
-    def _show_next(self):
-        if not self._pending:
-            self._active = None
-            return
-        flp_path = self._pending.pop(0)
-        self._active = CommitToast(flp_path, self._timeout, self._finished)
-        self._active.open()
-
-    def _finished(self, flp_path: str, result: str | None):
-        # result: None = skipped, else the (possibly empty) version name.
-        if result is not None:
-            threading.Thread(target=self._safe_commit,
-                             args=(flp_path, result or None),
-                             daemon=True).start()
-        self._show_next()
-
-    def _safe_commit(self, flp_path: str, name: str | None):
-        try:
-            self._on_commit(flp_path, name)
-        except Exception:
-            log.exception("commit failed for %s", flp_path)
-
-
 class CommitToast(QWidget):
     def __init__(self, flp_path: str, timeout_secs: int,
-                 on_done: Callable[[str, str | None], None]):
+                 on_done: Callable[[str, str | None], None],
+                 timeout_action: str = "commit"):
         super().__init__(None, Qt.WindowType.FramelessWindowHint
                          | Qt.WindowType.WindowStaysOnTopHint
                          | Qt.WindowType.Tool)
         self._flp_path = flp_path
         self._on_done = on_done
+        self._timeout_action = timeout_action  # 'commit' | 'skip' when countdown drains
         self._closed = False
         self.setFixedWidth(WIDTH)
 
@@ -88,9 +49,9 @@ class CommitToast(QWidget):
         lay.setContentsMargins(PAD, PAD - 4, PAD, 0)
         lay.setSpacing(0)
 
-        lay.addWidget(theme.eyebrow_row("SanGit — new save", self))
+        lay.addWidget(theme.eyebrow_row("SanGit — FL closed", self))
         lay.addSpacing(8)
-        title = QLabel("Commit new version?", self)
+        title = QLabel("Commit this version?", self)
         title.setObjectName("title")
         title.setFont(theme.font("display", 12))
         lay.addWidget(title)
@@ -174,7 +135,11 @@ class CommitToast(QWidget):
             return
         self._remaining_ms -= 100
         if self._remaining_ms <= 0:
-            self._skip()
+            # countdown drained: auto-commit (close flow) or skip (legacy)
+            if self._timeout_action == "commit":
+                self._commit()
+            else:
+                self._skip()
             return
         self._update_bar()
 
