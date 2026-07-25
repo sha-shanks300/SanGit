@@ -27,7 +27,7 @@ PAD = 20  # card interior padding
 
 class CommitToast(QWidget):
     def __init__(self, flp_path: str, timeout_secs: int,
-                 on_done: Callable[[str, str | None], None],
+                 on_done: Callable[[str, dict | None], None],
                  timeout_action: str = "commit"):
         super().__init__(None, Qt.WindowType.FramelessWindowHint
                          | Qt.WindowType.WindowStaysOnTopHint
@@ -70,23 +70,39 @@ class CommitToast(QWidget):
         self.entry.textEdited.connect(self._pause_countdown)
         lay.addWidget(self.entry)
 
+        lay.addSpacing(10)
+        lay.addWidget(theme.field_label("New branch · optional", self))
+        lay.addSpacing(3)
+        self._branch = QLineEdit(self)
+        self._branch.setFont(theme.font("body", 10))
+        self._branch.setPlaceholderText("name to fork a parallel version")
+        self._branch.returnPressed.connect(self._branch_commit)
+        self._branch.textEdited.connect(self._pause_countdown)
+        lay.addWidget(self._branch)
+
         lay.addSpacing(14)
         btns = QHBoxLayout()
         btns.setContentsMargins(0, 0, 0, 0)
-        btns.addStretch(1)
         skip = QPushButton("Skip", self)
         skip.setObjectName("ghost")
         skip.setFont(theme.font("body", 10))
         skip.setCursor(Qt.CursorShape.PointingHandCursor)
         skip.clicked.connect(self._skip)
-        commit = QPushButton("Commit", self)
-        commit.setObjectName("primary")
-        commit.setFont(theme.font("body", 10))
-        commit.setCursor(Qt.CursorShape.PointingHandCursor)
-        commit.clicked.connect(self._commit)
+        branch_btn = QPushButton("Branch && commit", self)  # && renders one &
+        branch_btn.setObjectName("outline")
+        branch_btn.setFont(theme.font("body", 10))
+        branch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        branch_btn.clicked.connect(self._branch_commit)
+        commit_btn = QPushButton("Commit", self)
+        commit_btn.setObjectName("primary")
+        commit_btn.setFont(theme.font("body", 10))
+        commit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        commit_btn.clicked.connect(self._commit)
         btns.addWidget(skip)
+        btns.addStretch(1)
+        btns.addWidget(branch_btn)
         btns.addSpacing(8)
-        btns.addWidget(commit)
+        btns.addWidget(commit_btn)
         lay.addLayout(btns)
         lay.addSpacing(PAD - 4)
 
@@ -155,7 +171,18 @@ class CommitToast(QWidget):
 
     # ---- outcomes ----
     def _commit(self):
-        self._close_with(self.entry.text().strip())
+        # new version on the branch this file is already on
+        self._close_with({"name": self.entry.text().strip(), "branch": None})
+
+    def _branch_commit(self):
+        # new parallel branch; a name is required for this action
+        branch = self._branch.text().strip()
+        if not branch:
+            self._pause_countdown()
+            self._branch.setFocus()
+            return
+        name = self.entry.text().strip()
+        self._close_with({"name": name or branch, "branch": branch})
 
     def _skip(self):
         self._close_with(None)
@@ -174,7 +201,7 @@ class CommitToast(QWidget):
             self._on_done(self._flp_path, None)
         super().closeEvent(event)
 
-    def _close_with(self, result: str | None):
+    def _close_with(self, outcome: dict | None):
         if self._closed:
             return
         self._closed = True
@@ -186,7 +213,7 @@ class CommitToast(QWidget):
         def done():
             self.hide()
             self.deleteLater()
-            self._on_done(self._flp_path, result)
+            self._on_done(self._flp_path, outcome)
 
         self._fade.finished.connect(done)
         self._fade.start()

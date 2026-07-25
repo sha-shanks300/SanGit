@@ -81,19 +81,30 @@ export function buildGraph(
     }
   }
 
+  const versionIds = new Set(ordered.map((v) => v.id));
   for (const b of branches) {
-    if (!b.parent_branch_id) continue;
     const first = byBranch.get(b.id)?.[0];
-    const parentList = byBranch.get(b.parent_branch_id);
-    if (!first || !parentList?.length) continue;
-    const firstTime = new Date(first.uploaded_at).getTime();
-    const anchor =
-      [...parentList]
-        .reverse()
-        .find((p) => new Date(p.uploaded_at).getTime() < firstTime) ??
-      parentList[0];
-    if (anchor.id !== first.id) {
-      links.push({ source: anchor.id, target: first.id, kind: "fork" });
+    if (!first) continue;
+    // Prefer the explicit fork anchor recorded at branch creation; fall back to
+    // the timestamp guess (last parent-branch version before this branch began)
+    // for branches created before fork_version_id existed.
+    let anchorId: string | null = null;
+    if (b.fork_version_id && versionIds.has(b.fork_version_id)) {
+      anchorId = b.fork_version_id;
+    } else if (b.parent_branch_id) {
+      const parentList = byBranch.get(b.parent_branch_id);
+      if (parentList?.length) {
+        const firstTime = new Date(first.uploaded_at).getTime();
+        const anchor =
+          [...parentList]
+            .reverse()
+            .find((p) => new Date(p.uploaded_at).getTime() < firstTime) ??
+          parentList[0];
+        anchorId = anchor.id;
+      }
+    }
+    if (anchorId && anchorId !== first.id) {
+      links.push({ source: anchorId, target: first.id, kind: "fork" });
     }
   }
 

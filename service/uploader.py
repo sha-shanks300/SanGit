@@ -75,6 +75,8 @@ class UploadWorker:
             file_name=row["file_name"],
             sha256=row["sha256"],
             size=snapshot.stat().st_size,
+            branch_id=row["branch_id"],
+            new_branch_name=row["new_branch_name"],
         )
 
         if init.get("duplicate"):
@@ -97,6 +99,10 @@ class UploadWorker:
         )
         store.commit_done(row["id"], init["version_id"], duplicate=False)
         store.add_render(init["version_id"], str(snapshot))
+        # Track the branch this file now lives on (a fresh one after a Branch &
+        # commit) so subsequent normal commits continue on the same line.
+        if row["flp_path"]:
+            store.file_branch_set(row["flp_path"], init["branch_id"])
         log.info("commit #%s uploaded as version %s; render queued",
                  row["id"], init["version_id"])
         self._settle(row["id"], True)  # terminal: .flp is safely uploaded

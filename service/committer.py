@@ -40,8 +40,11 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
-def commit(flp_path: str, display_name: str | None) -> int | None:
-    """Snapshot + enqueue. Returns the commit queue id, or None on failure."""
+def commit(flp_path: str, display_name: str | None,
+           new_branch_name: str | None = None) -> int | None:
+    """Snapshot + enqueue. Returns the commit queue id, or None on failure.
+    `new_branch_name` set => "Branch & commit": the version starts a new branch
+    that forks from the current tip's parent (server-side)."""
     src = Path(flp_path)
     if not src.exists():
         log.error("commit requested but file vanished: %s", src)
@@ -65,9 +68,13 @@ def commit(flp_path: str, display_name: str | None) -> int | None:
         project_title=title,
         display_name=display_name or None,
         sha256=digest,
+        flp_path=str(src),
+        branch_id=store.file_branch_get(str(src)),  # active branch (None on first)
+        new_branch_name=(new_branch_name or None),
     )
     # Remember this content as committed for this path so a later FL-close
     # won't prompt again unless the file actually changes.
     store.record_committed(str(src), digest)
-    log.info("queued commit #%s %s (%s)", commit_id, src.name, digest[:12])
+    log.info("queued commit #%s %s (%s)%s", commit_id, src.name, digest[:12],
+             f" -> new branch '{new_branch_name}'" if new_branch_name else "")
     return commit_id
