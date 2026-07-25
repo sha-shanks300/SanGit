@@ -97,18 +97,25 @@ function computeLayout(branches: Branch[], versions: Version[]): Layout {
     waves.push({ lane: laneNodes[0].lane, d });
   }
 
-  // Fork connectors: parent anchor (last parent save before the child's
-  // first) -> first node of the child branch. With newest on the left,
-  // "earlier in time" means further right, so the anchor is the nearest
-  // parent node to the child's right.
+  // Fork connectors: from the version the branch forked off -> first node of
+  // the child branch. Prefer the explicit fork_version_id (a Branch & commit
+  // forks off the tip's PARENT, i.e. a sibling of the tip); fall back to the
+  // timestamp guess (nearest parent node just older than the child's first)
+  // for branches created before fork_version_id existed.
+  const nodeById = new Map(nodes.map((n) => [n.version.id, n]));
   const forks: Layout["forks"] = [];
   for (const b of branches) {
     if (!b.parent_branch_id || !laneOf.has(b.parent_branch_id)) continue;
     const laneNodes = byBranch.get(b.id);
     const first = laneNodes?.[laneNodes.length - 1]; // rightmost = oldest
     if (!first) continue;
-    const parentNodes = byBranch.get(b.parent_branch_id) ?? [];
-    const anchor = parentNodes.find((p) => p.x > first.x);
+    let anchor: NodePos | undefined = b.fork_version_id
+      ? nodeById.get(b.fork_version_id)
+      : undefined;
+    if (!anchor) {
+      const parentNodes = byBranch.get(b.parent_branch_id) ?? [];
+      anchor = parentNodes.find((p) => p.x > first.x);
+    }
     const fromX = anchor ? anchor.x : first.x + 24;
     const fromY =
       anchor?.y ?? TOP_PAD + (laneOf.get(b.parent_branch_id) ?? 0) * LANE_HEIGHT;
@@ -132,6 +139,7 @@ export function TimelineTree({
   selectedId,
   onSelect,
   onNodeContextMenu,
+  onBranchLabelClick,
 }: {
   branches: Branch[];
   versions: Version[];
@@ -140,6 +148,8 @@ export function TimelineTree({
   onSelect: (version: Version) => void;
   /** Owner-only right-click on a node (viewport coordinates). */
   onNodeContextMenu?: (version: Version, x: number, y: number) => void;
+  /** Owner-only left-click on a fork branch's label (viewport coordinates). */
+  onBranchLabelClick?: (branch: Branch, x: number, y: number) => void;
 }) {
   const layout = useMemo(
     () => computeLayout(branches, versions),
@@ -185,22 +195,43 @@ export function TimelineTree({
         className="relative shrink-0 pr-4"
         style={{ height: layout.height, width: 132 }}
       >
-        {layout.lanes.map(({ branch, y }, i) => (
-          <div
-            key={branch.id}
-            className={cn(
-              "absolute left-0 flex max-w-[128px] items-center gap-1.5 truncate font-mono text-mono",
-              i === mainLane ? "text-ink" : "text-ink-subtle"
-            )}
-            style={{ top: y - 9 }}
-            title={branch.name}
-          >
-            {i === mainLane && (
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
-            )}
-            <span className="truncate">{branch.name}</span>
-          </div>
-        ))}
+        {layout.lanes.map(({ branch, y }, i) => {
+          // The trunk (no parent) shows as "main"; forks keep their real name.
+          const isRoot = branch.parent_branch_id === null;
+          const displayName = isRoot ? "main" : branch.name;
+          const clickable = !isRoot && Boolean(onBranchLabelClick);
+          return (
+            <div
+              key={branch.id}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={
+                clickable
+                  ? (e) => onBranchLabelClick!(branch, e.clientX, e.clientY)
+                  : undefined
+              }
+              className={cn(
+                "absolute left-0 flex max-w-[128px] items-center gap-1.5 truncate font-mono text-mono",
+                i === mainLane ? "text-ink" : "text-ink-subtle",
+                clickable && "cursor-pointer hover:text-ink"
+              )}
+              style={{ top: y - 9 }}
+              title={
+                clickable ? `${branch.name} — branch actions` : branch.name
+              }
+            >
+              {/* dot column reserved on every lane so names left-align; only the
+                  lane holding the Main version shows the red mark */}
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 shrink-0 rounded-full",
+                  i === mainLane ? "bg-primary" : "bg-transparent"
+                )}
+              />
+              <span className="truncate">{displayName}</span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Scrollable graph. */}
@@ -225,17 +256,21 @@ export function TimelineTree({
             />
           ))}
 
-          {/* fork connectors */}
-          {layout.forks.map((f, i) => (
-            <path
-              key={`${i}:${f.fromX},${f.fromY},${f.toX},${f.toY}`}
-              d={`M ${f.fromX} ${f.fromY} C ${f.fromX + 28} ${f.fromY}, ${f.toX - 28} ${f.toY}, ${f.toX} ${f.toY}`}
-              fill="none"
-              stroke="var(--hairline-strong)"
-              strokeWidth={2}
-              className="animate-tree-fade-in"
-            />
-          ))}
+          {/* fork connectors — same sine style as the lane waves: cubic with
+              horizontal tangents at both ends, control points at the midpoint x */}
+          {layout.forks.map((f, i) => {
+            const mx = (f.fromX + f.toX) / 2;
+            return (
+              <path
+                key={`${i}:${f.fromX},${f.fromY},${f.toX},${f.toY}`}
+                d={`M ${f.fromX} ${f.fromY} C ${mx} ${f.fromY}, ${mx} ${f.toY}, ${f.toX} ${f.toY}`}
+                fill="none"
+                stroke="var(--hairline-strong)"
+                strokeWidth={2}
+                className="animate-tree-fade-in"
+              />
+            );
+          })}
 
           {/* exiting nodes: shrink and fade at their old spot, then unmount */}
           {ghosts.map(({ version: v, x, y, label }) => (

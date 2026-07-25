@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/lib/use-project";
 import { uploadPublicImage } from "@/lib/image-upload";
-import type { Version } from "@/lib/database.types";
+import type { Branch, Version } from "@/lib/database.types";
 import { ProjectArtwork } from "@/components/project-artwork";
 import { TimelineTree } from "@/components/timeline-tree";
 import { VersionGraph } from "@/components/version-graph";
@@ -12,7 +12,10 @@ import { cn } from "@/lib/utils";
 import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
 import { VersionContextMenu } from "@/components/version-context-menu";
+import { BranchActionsMenu } from "@/components/branch-actions-menu";
 import { DeleteVersionDialog } from "@/components/delete-version-dialog";
+import { DeleteBranchDialog } from "@/components/delete-branch-dialog";
+import { MergeBranchDialog } from "@/components/merge-branch-dialog";
 import { Interactions } from "@/components/interactions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ShareButton } from "@/components/share-button";
@@ -41,6 +44,13 @@ export function ProjectView({
     null
   );
   const [deleting, setDeleting] = useState<Version | null>(null);
+  const [branchMenu, setBranchMenu] = useState<{
+    branch: Branch;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [mergingBranch, setMergingBranch] = useState<Branch | null>(null);
+  const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
 
   useEffect(() => {
     if (localStorage.getItem("sangit-timeline-view") === "graph")
@@ -82,6 +92,25 @@ export function ProjectView({
       setSelected(next);
     }
     setDeleting(null);
+    refetch();
+  }
+
+  // A branch's display name, mirroring the tree: the trunk reads "main".
+  const branchLabel = (b: Branch | undefined) =>
+    !b ? "main" : b.parent_branch_id === null ? "main" : b.name;
+  const parentOf = (b: Branch) =>
+    branches.find((x) => x.id === b.parent_branch_id);
+  const versionsOn = (branchId: string) =>
+    versions.filter((v) => v.branch_id === branchId);
+
+  function onBranchDeleted() {
+    setSelected(null); // versions on that branch are gone; fall back to Main/none
+    setDeletingBranch(null);
+    refetch();
+  }
+  function onBranchMerged() {
+    // versions survive (re-parented); selection stays valid
+    setMergingBranch(null);
     refetch();
   }
 
@@ -190,6 +219,9 @@ export function ProjectView({
             onNodeContextMenu={
               isOwner ? (v, x, y) => setMenu({ version: v, x, y }) : undefined
             }
+            onBranchLabelClick={
+              isOwner ? (b, x, y) => setBranchMenu({ branch: b, x, y }) : undefined
+            }
           />
         )}
       </Panel>
@@ -217,6 +249,39 @@ export function ProjectView({
           }
           onClose={() => setDeleting(null)}
           onDeleted={() => onVersionDeleted(deleting)}
+        />
+      )}
+
+      {branchMenu && (
+        <BranchActionsMenu
+          x={branchMenu.x}
+          y={branchMenu.y}
+          parentLabel={branchLabel(parentOf(branchMenu.branch))}
+          onMerge={() => setMergingBranch(branchMenu.branch)}
+          onDelete={() => setDeletingBranch(branchMenu.branch)}
+          onClose={() => setBranchMenu(null)}
+        />
+      )}
+
+      {mergingBranch && (
+        <MergeBranchDialog
+          branch={mergingBranch}
+          parentLabel={branchLabel(parentOf(mergingBranch))}
+          versionCount={versionsOn(mergingBranch.id).length}
+          onClose={() => setMergingBranch(null)}
+          onMerged={onBranchMerged}
+        />
+      )}
+
+      {deletingBranch && (
+        <DeleteBranchDialog
+          branch={deletingBranch}
+          versionCount={versionsOn(deletingBranch.id).length}
+          hasMainVersion={versionsOn(deletingBranch.id).some(
+            (v) => v.id === project.main_version_id
+          )}
+          onClose={() => setDeletingBranch(null)}
+          onDeleted={onBranchDeleted}
         />
       )}
 
