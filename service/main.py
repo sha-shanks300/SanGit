@@ -178,19 +178,23 @@ class App(QObject):
         self._active_toast = toast
         toast.open()
 
-    def _on_toast_done(self, flp_path: str, result: str | None):
+    def _on_toast_done(self, flp_path: str, outcome: dict | None):
         # main thread (toast fade-out). None = Skip -> just move to next project.
+        # outcome = {"name": <version name>, "branch": <new branch name or None>}
         self._active_toast = None
-        if result is None:
+        if outcome is None:
             self._process_close_queue()
             return
         self._begin_card()  # one card for this commit's whole lifecycle
-        threading.Thread(target=self._run_commit,
-                         args=(flp_path, result or None), daemon=True).start()
+        threading.Thread(
+            target=self._run_commit,
+            args=(flp_path, outcome.get("name") or None, outcome.get("branch") or None),
+            daemon=True).start()
 
-    def _run_commit(self, flp_path: str, name: str | None):
+    def _run_commit(self, flp_path: str, name: str | None,
+                    new_branch_name: str | None = None):
         try:
-            commit_id = committer.commit(flp_path, name)
+            commit_id = committer.commit(flp_path, name, new_branch_name)
         except Exception:
             log.exception("commit failed for %s", flp_path)
             commit_id = None
