@@ -75,13 +75,16 @@ class ApiClient:
                           {"code": code, "device_name": device_name}, authed=False)
 
     def init_upload(self, project_id: str, project_title: str, file_name: str,
-                    sha256: str, size: int) -> dict:
+                    sha256: str, size: int, branch_id: str | None = None,
+                    new_branch_name: str | None = None) -> dict:
         return self._post("/api/ingest/init-upload", {
             "project_id": project_id,
             "project_title": project_title,
             "file_name": file_name,
             "sha256": sha256,
             "size": size,
+            "branch_id": branch_id,
+            "new_branch_name": new_branch_name,
         })
 
     def complete(self, version_id: str, project_id: str, branch_id: str,
