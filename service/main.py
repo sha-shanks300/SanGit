@@ -83,6 +83,7 @@ class App(QObject):
     render_started = Signal()  # FL about to relaunch to export (render thread)
     render_settled = Signal(bool)  # ok — the render attempt ended (render thread)
     fl_closed = Signal()  # FL fully quit — end of a session (monitor thread)
+    branches_loaded = Signal(object)  # project's branches, for the toast dropdown
 
     def __init__(self, cfg: dict, qapp: QApplication):
         super().__init__()
@@ -130,6 +131,7 @@ class App(QObject):
         self.render_started.connect(self._on_render_started)
         self.render_settled.connect(self._on_render_settled)
         self.fl_closed.connect(self._on_fl_closed)
+        self.branches_loaded.connect(self._on_branches_loaded)
 
     # watcher thread -> Qt main thread via signal
     def _on_save(self, flp_path: str):
@@ -174,13 +176,14 @@ class App(QObject):
             return
         flp = self._close_queue.pop(0)
         toast = CommitToast(flp, timeout_secs=15, on_done=self._on_toast_done,
-                            timeout_action="commit")  # auto-commits if ignored
+                            timeout_action="commit",  # auto-commits if ignored
+                            on_request_branches=self._request_branches)
         self._active_toast = toast
         toast.open()
 
     def _on_toast_done(self, flp_path: str, outcome: dict | None):
         # main thread (toast fade-out). None = Skip -> just move to next project.
-        # outcome = {"name": <version name>, "branch": <new branch name or None>}
+        # outcome: {"name", ["branch_id"|"new_branch"]} (both branch keys optional)
         self._active_toast = None
         if outcome is None:
             self._process_close_queue()
@@ -188,13 +191,16 @@ class App(QObject):
         self._begin_card()  # one card for this commit's whole lifecycle
         threading.Thread(
             target=self._run_commit,
-            args=(flp_path, outcome.get("name") or None, outcome.get("branch") or None),
+            args=(flp_path, outcome.get("name") or None,
+                  outcome.get("new_branch") or None, outcome.get("branch_id") or None),
             daemon=True).start()
 
     def _run_commit(self, flp_path: str, name: str | None,
-                    new_branch_name: str | None = None):
+                    new_branch_name: str | None = None,
+                    target_branch_id: str | None = None):
         try:
-            commit_id = committer.commit(flp_path, name, new_branch_name)
+            commit_id = committer.commit(flp_path, name, new_branch_name,
+                                         target_branch_id)
         except Exception:
             log.exception("commit failed for %s", flp_path)
             commit_id = None
@@ -202,6 +208,23 @@ class App(QObject):
             self.commit_enqueued.emit(commit_id)
         else:
             self.commit_settled.emit(-1, False)  # never queued -> fail the card
+
+    # ---- branch dropdown: lazily fetch the project's branches on demand ----
+    def _request_branches(self, flp_path: str):  # main thread (from the toast)
+        def work():
+            project_id = committer.read_project_id(flp_path)
+            if not project_id:
+                return
+            try:
+                data = self.client.list_branches(project_id)
+            except ApiError:
+                return  # offline -> the dropdown stays a free-text box
+            self.branches_loaded.emit(data)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _on_branches_loaded(self, branches: object):  # main thread
+        if self._active_toast is not None:
+            self._active_toast.set_branches(branches)
 
     # ---- the single card: upload -> export -> done ----
     def _begin_card(self):

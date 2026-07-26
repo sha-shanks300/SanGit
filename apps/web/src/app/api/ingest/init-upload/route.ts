@@ -91,71 +91,73 @@ export async function POST(request: Request) {
   }
 
   let branchId: string | undefined;
+  // Did this request CREATE a new branch? The service moves the file's home
+  // branch only when true — appending to an existing branch is a one-off.
+  let branchCreated = false;
 
   if (new_branch_name) {
-    // "Branch & commit": fork a NEW branch that is a sibling of the base
-    // branch's current tip — i.e. it forks from the version BEFORE the tip.
+    // "Commit to branch": the named branch may be new (fork it) or already
+    // exist (append onto it — covers the offline free-text case).
     const wanted = new_branch_name.trim().slice(0, 120);
     if (!wanted) {
       return NextResponse.json({ error: "new_branch_name is empty" }, { status: 400 });
     }
 
-    // Resolve the base branch (the file's active branch): the sent branch_id,
-    // else the filename-derived branch if it already exists, else none.
-    let baseBranchId = branch_id ? await validateBranch(branch_id) : null;
-    if (!baseBranchId) {
-      const { data: fb } = await admin
-        .from("branches")
-        .select("id")
-        .eq("project_id", project_id)
-        .eq("name", filenameBranch)
-        .maybeSingle();
-      baseBranchId = fb?.id ?? null;
-    }
-
-    // Fork point = the version before the base tip (sibling of the tip). With
-    // only one version, fork from it; with none, leave it null (graph falls back).
-    let forkVersionId: string | null = null;
-    if (baseBranchId) {
-      const { data: recent } = await admin
-        .from("versions")
-        .select("id")
-        .eq("branch_id", baseBranchId)
-        .order("uploaded_at", { ascending: false })
-        .limit(2);
-      forkVersionId = recent?.[1]?.id ?? recent?.[0]?.id ?? null;
-    }
-
-    // Ensure the branch name is unique within the project.
-    let name = wanted;
-    for (let i = 2; i < 200; i++) {
-      const { data: taken } = await admin
-        .from("branches")
-        .select("id")
-        .eq("project_id", project_id)
-        .eq("name", name)
-        .maybeSingle();
-      if (!taken) break;
-      name = `${wanted}-${i}`;
-    }
-
-    const { data: branch, error } = await admin
+    const { data: existing } = await admin
       .from("branches")
-      .insert({
-        project_id,
-        user_id: device.user_id,
-        name,
-        parent_branch_id: baseBranchId,
-        fork_version_id: forkVersionId,
-      })
       .select("id")
-      .single();
-    if (error || !branch) {
-      return NextResponse.json({ error: "failed to create branch" }, { status: 500 });
+      .eq("project_id", project_id)
+      .eq("name", wanted)
+      .maybeSingle();
+
+    if (existing) {
+      branchId = existing.id; // append onto the existing branch
+    } else {
+      // Create a NEW branch that is a sibling of the base branch's current tip
+      // — i.e. it forks from the version BEFORE the tip. Base = the sent
+      // branch_id (the file's home), else the filename-derived branch.
+      let baseBranchId = branch_id ? await validateBranch(branch_id) : null;
+      if (!baseBranchId) {
+        const { data: fb } = await admin
+          .from("branches")
+          .select("id")
+          .eq("project_id", project_id)
+          .eq("name", filenameBranch)
+          .maybeSingle();
+        baseBranchId = fb?.id ?? null;
+      }
+
+      let forkVersionId: string | null = null;
+      if (baseBranchId) {
+        const { data: recent } = await admin
+          .from("versions")
+          .select("id")
+          .eq("branch_id", baseBranchId)
+          .order("uploaded_at", { ascending: false })
+          .limit(2);
+        forkVersionId = recent?.[1]?.id ?? recent?.[0]?.id ?? null;
+      }
+
+      const { data: branch, error } = await admin
+        .from("branches")
+        .insert({
+          project_id,
+          user_id: device.user_id,
+          name: wanted,
+          parent_branch_id: baseBranchId,
+          fork_version_id: forkVersionId,
+        })
+        .select("id")
+        .single();
+      if (error || !branch) {
+        return NextResponse.json({ error: "failed to create branch" }, { status: 500 });
+      }
+      branchId = branch.id;
+      branchCreated = true;
     }
-    branchId = branch.id;
   } else if (branch_id) {
-    // Normal commit onto the file's tracked active branch.
+    // Commit onto a specific existing branch (the file's home, or one picked
+    // from the dropdown). Appending — never creates.
     const valid = await validateBranch(branch_id);
     if (!valid) {
       return NextResponse.json({ error: "unknown branch_id" }, { status: 400 });
@@ -195,6 +197,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "failed to create branch" }, { status: 500 });
       }
       branchId = branch.id;
+      branchCreated = true;
     }
   }
 
@@ -225,6 +228,7 @@ export async function POST(request: Request) {
     duplicate: false,
     version_id: versionId,
     branch_id: branchId,
+    branch_created: branchCreated,
     storage_path: storagePath,
     upload_url: signed.signedUrl,
     upload_token: signed.token,

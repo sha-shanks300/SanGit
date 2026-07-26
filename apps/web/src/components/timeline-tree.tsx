@@ -61,11 +61,68 @@ function computeLayout(branches: Branch[], versions: Version[]): Layout {
 
   const ordered = [...chronological].reverse(); // newest → oldest, left → right
 
-  const nodes: NodePos[] = ordered.map((v, i) => {
+  // Horizontal columns come from the BRANCH STRUCTURE, not global wall-clock
+  // order: a fork's first (oldest) node shares its sibling's column — the
+  // column just after the fork anchor on the parent — so siblings sit
+  // vertically parallel instead of the fork sliding off to one side.
+  const versionById = new Map(versions.map((v) => [v.id, v]));
+  const timeOf = (v: Version) => new Date(v.uploaded_at).getTime();
+  const byBranchChrono = new Map<string, Version[]>(); // oldest → newest per branch
+  for (const v of chronological) {
+    const list = byBranchChrono.get(v.branch_id) ?? [];
+    list.push(v);
+    byBranchChrono.set(v.branch_id, list);
+  }
+
+  // The version a branch forked from (explicit anchor, else timestamp guess).
+  const anchorVersionId = (b: Branch): string | null => {
+    if (b.fork_version_id && versionById.has(b.fork_version_id)) return b.fork_version_id;
+    if (!b.parent_branch_id) return null;
+    const parentList = byBranchChrono.get(b.parent_branch_id);
+    const first = byBranchChrono.get(b.id)?.[0];
+    if (!parentList?.length || !first) return null;
+    const ft = timeOf(first);
+    let anchor: Version | null = null;
+    for (const p of parentList) if (timeOf(p) < ft) anchor = p;
+    return (anchor ?? parentList[0]).id;
+  };
+
+  const column = new Map<string, number>();
+  // Place a branch: its oldest node at `firstCol`, each newer node one column
+  // left (smaller), so the newest overall ends up leftmost.
+  const place = (b: Branch, firstCol: number) => {
+    (byBranchChrono.get(b.id) ?? []).forEach((v, k) => column.set(v.id, firstCol - k));
+  };
+  // Assign parents before children so a fork's anchor column is ready first.
+  const pending = branches.filter((b) => (byBranchChrono.get(b.id)?.length ?? 0) > 0);
+  let guard = pending.length + 1;
+  while (pending.length && guard-- > 0) {
+    for (let i = pending.length - 1; i >= 0; i--) {
+      const b = pending[i];
+      const list = byBranchChrono.get(b.id)!;
+      const aId = b.parent_branch_id ? anchorVersionId(b) : null;
+      if (aId === null) {
+        place(b, list.length - 1); // root (or unresolved): newest at column 0
+        pending.splice(i, 1);
+      } else if (column.has(aId)) {
+        place(b, column.get(aId)! - 1); // first node aligns with the sibling column
+        pending.splice(i, 1);
+      }
+    }
+  }
+  for (const b of pending) place(b, (byBranchChrono.get(b.id)?.length ?? 1) - 1);
+
+  let minCol = 0;
+  for (const c of column.values()) minCol = Math.min(minCol, c);
+  const colOf = (v: Version) => (column.get(v.id) ?? 0) - minCol;
+  let maxCol = 0;
+  for (const v of versions) maxCol = Math.max(maxCol, colOf(v));
+
+  const nodes: NodePos[] = ordered.map((v) => {
     const lane = laneOf.get(v.branch_id) ?? 0;
     return {
       version: v,
-      x: LEFT_PAD + i * NODE_SPACING,
+      x: LEFT_PAD + colOf(v) * NODE_SPACING,
       y: TOP_PAD + lane * LANE_HEIGHT, // flat; wave offset applied below
       lane,
       label: `v${numberOf.get(v.id) ?? 0}`,
@@ -125,7 +182,7 @@ function computeLayout(branches: Branch[], versions: Version[]): Layout {
   return {
     nodes,
     lanes: branches.map((b, i) => ({ branch: b, y: TOP_PAD + i * LANE_HEIGHT })),
-    width: LEFT_PAD + Math.max(ordered.length, 1) * NODE_SPACING + 20,
+    width: LEFT_PAD + (maxCol + 1) * NODE_SPACING + 20,
     height: TOP_PAD + Math.max(branches.length, 1) * LANE_HEIGHT + 10,
     forks,
     waves,
