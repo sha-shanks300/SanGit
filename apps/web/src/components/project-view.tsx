@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { PlayerBar } from "@/components/player";
 import { VersionPanel } from "@/components/version-panel";
 import { VersionContextMenu } from "@/components/version-context-menu";
+import { ShareVersionDialog } from "@/components/share-version-dialog";
 import { BranchActionsMenu } from "@/components/branch-actions-menu";
 import { DeleteVersionDialog } from "@/components/delete-version-dialog";
 import { DeleteBranchDialog } from "@/components/delete-branch-dialog";
@@ -44,6 +45,7 @@ export function ProjectView({
     null
   );
   const [deleting, setDeleting] = useState<Version | null>(null);
+  const [sharingVersion, setSharingVersion] = useState<Version | null>(null);
   const [branchMenu, setBranchMenu] = useState<{
     branch: Branch;
     x: number;
@@ -232,8 +234,20 @@ export function ProjectView({
           y={menu.y}
           isMain={menu.version.id === project.main_version_id}
           onSetMain={() => setMain(menu.version)}
+          onShare={() => setSharingVersion(menu.version)}
           onDelete={() => setDeleting(menu.version)}
           onClose={() => setMenu(null)}
+        />
+      )}
+
+      {sharingVersion && (
+        <ShareVersionDialog
+          projectId={project.id}
+          version={{
+            id: sharingVersion.id,
+            name: sharingVersion.display_name || sharingVersion.file_name,
+          }}
+          onClose={() => setSharingVersion(null)}
         />
       )}
 
