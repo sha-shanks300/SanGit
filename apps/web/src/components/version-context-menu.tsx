@@ -11,6 +11,7 @@ export function VersionContextMenu({
   y,
   isMain,
   onSetMain,
+  onShare,
   onDelete,
   onClose,
 }: {
@@ -18,6 +19,7 @@ export function VersionContextMenu({
   y: number;
   isMain: boolean;
   onSetMain: () => void;
+  onShare: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -61,6 +63,17 @@ export function VersionContextMenu({
         }}
       >
         {isMain ? "Current Main" : "Set as Main"}
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className="block w-full cursor-pointer px-4 py-2 text-left text-body-sm text-ink transition-colors hover:bg-surface-2"
+        onClick={() => {
+          onShare();
+          onClose();
+        }}
+      >
+        Share version…
       </button>
       <button
         type="button"

@@ -17,14 +17,19 @@ type Scope = "project" | "version";
 export function ShareManager({
   versionId,
   projectId,
+  lockVersion = false,
+  defaultExpiryHours = 168,
 }: {
   /** Selected version for "this version only" links; null disables that scope. */
   versionId: string | null;
   projectId: string;
+  /** Lock to version scope (hide the scope tabs) — used by "Share version…". */
+  lockVersion?: boolean;
+  defaultExpiryHours?: number;
 }) {
   const [links, setLinks] = useState<ShareLink[]>([]);
-  const [scope, setScope] = useState<Scope>("project");
-  const [expiresHours, setExpiresHours] = useState("168");
+  const [scope, setScope] = useState<Scope>(lockVersion ? "version" : "project");
+  const [expiresHours, setExpiresHours] = useState(String(defaultExpiryHours));
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -89,44 +94,49 @@ export function ShareManager({
     refetch();
   }
 
-  // Project-wide links + links for the currently selected version.
-  const visible = links.filter(
-    (l) => l.version_id === null || l.version_id === versionId
+  // Locked mode shows only this version's links; otherwise project-wide links
+  // plus links for the currently selected version.
+  const visible = links.filter((l) =>
+    lockVersion
+      ? l.version_id === versionId
+      : l.version_id === null || l.version_id === versionId
   );
 
   return (
     <div className="mt-4">
       <p className="text-caption text-ink-subtle">Private share links</p>
 
-      <div className="mt-2 flex gap-1" role="tablist" aria-label="Share scope">
-        {(
-          [
-            ["project", "All versions"],
-            ["version", "This version only"],
-          ] as const
-        ).map(([value, label]) => {
-          const disabled = value === "version" && versionId === null;
-          return (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={scope === value}
-              disabled={disabled}
-              title={disabled ? "Select a version first" : undefined}
-              onClick={() => setScope(value)}
-              className={cn(
-                "border px-3 py-1 text-caption transition-colors",
-                scope === value
-                  ? "border-hairline-strong bg-surface-2 text-ink"
-                  : "border-transparent text-ink-subtle hover:text-ink",
-                disabled && "cursor-not-allowed opacity-40 hover:text-ink-subtle"
-              )}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      {!lockVersion && (
+        <div className="mt-2 flex gap-1" role="tablist" aria-label="Share scope">
+          {(
+            [
+              ["project", "All versions"],
+              ["version", "This version only"],
+            ] as const
+          ).map(([value, label]) => {
+            const disabled = value === "version" && versionId === null;
+            return (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={scope === value}
+                disabled={disabled}
+                title={disabled ? "Select a version first" : undefined}
+                onClick={() => setScope(value)}
+                className={cn(
+                  "border px-3 py-1 text-caption transition-colors",
+                  scope === value
+                    ? "border-hairline-strong bg-surface-2 text-ink"
+                    : "border-transparent text-ink-subtle hover:text-ink",
+                  disabled && "cursor-not-allowed opacity-40 hover:text-ink-subtle"
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mt-3 flex items-center gap-2">
         <Input
