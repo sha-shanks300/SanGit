@@ -100,6 +100,24 @@ class ApiClient:
             "display_name": display_name,
         })
 
+    def list_branches(self, project_id: str) -> list[dict]:
+        """Branches for a project (id + name), for the 'Commit to branch'
+        dropdown. Raises ApiError on failure so the popup can fall back to
+        free text."""
+        try:
+            resp = requests.get(
+                f"{self.api_url}/api/ingest/branches",
+                params={"project_id": project_id},
+                headers={"Authorization": f"Bearer {self.device_token}"},
+                timeout=10,
+            )
+        except requests.RequestException as e:
+            raise ApiError(f"network error: {e}") from e
+        if resp.status_code >= 400:
+            raise ApiError(_error_detail(resp), status=resp.status_code,
+                           retryable=resp.status_code >= 500)
+        return resp.json().get("branches", [])
+
     def audio_init(self, version_id: str) -> dict:
         return self._post(f"/api/ingest/audio/{version_id}", {"phase": "init"})
 

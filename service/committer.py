@@ -32,6 +32,18 @@ def _project_identity(folder: Path) -> tuple[str, str]:
     return project_id, folder.name
 
 
+def read_project_id(flp_path: str) -> str | None:
+    """Read the project UUID from the folder's marker without creating one —
+    used to fetch a project's branches for the commit popup's dropdown."""
+    marker = Path(flp_path).parent / MARKER_FILENAME
+    if not marker.exists():
+        return None
+    try:
+        return json.loads(marker.read_text(encoding="utf-8")).get("project_id")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
 def sha256_of(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -41,10 +53,13 @@ def sha256_of(path: Path) -> str:
 
 
 def commit(flp_path: str, display_name: str | None,
-           new_branch_name: str | None = None) -> int | None:
+           new_branch_name: str | None = None,
+           target_branch_id: str | None = None) -> int | None:
     """Snapshot + enqueue. Returns the commit queue id, or None on failure.
-    `new_branch_name` set => "Branch & commit": the version starts a new branch
-    that forks from the current tip's parent (server-side)."""
+    `new_branch_name` => "Commit to branch": create it (fork) or append if it
+    already exists (server decides). `target_branch_id` => commit onto a
+    specific existing branch picked from the dropdown. Neither => the file's
+    current home branch."""
     src = Path(flp_path)
     if not src.exists():
         log.error("commit requested but file vanished: %s", src)
@@ -69,7 +84,9 @@ def commit(flp_path: str, display_name: str | None,
         display_name=display_name or None,
         sha256=digest,
         flp_path=str(src),
-        branch_id=store.file_branch_get(str(src)),  # active branch (None on first)
+        # a picked existing branch overrides the file's home; else the home is
+        # both the commit target and the base for a new fork.
+        branch_id=(target_branch_id or store.file_branch_get(str(src))),
         new_branch_name=(new_branch_name or None),
     )
     # Remember this content as committed for this path so a later FL-close
