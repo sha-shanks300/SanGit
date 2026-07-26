@@ -10,8 +10,10 @@ import type { Branch, Version } from "@/lib/database.types";
  *
  * - version-scoped link → `scope: "version"` + a short-lived signed mp3 URL
  *   (the original single-track behavior), or
- * - project-scoped link → `scope: "project"` + project metadata, owner,
- *   branches, and all versions (storage paths stripped). Audio is fetched
+ * - project-scoped link → `scope: "project"`. Honors the project's Main/All
+ *   setting: All versions returns branches + every version; Main-only returns
+ *   just the Main (or latest ready) version and no branches, so recipients
+ *   never learn other versions exist. Storage paths stripped; audio is fetched
  *   per-version via /api/listen/[token]/audio/[versionId].
  *
  * `?noview=1` refreshes the payload without counting another view (used by
@@ -56,51 +58,84 @@ export async function GET(
   if (!link.version_id) {
     const { data: project } = await admin
       .from("projects")
-      .select("id, user_id, title, artwork_url, main_version_id")
+      .select("id, user_id, title, artwork_url, main_version_id, show_history")
       .eq("id", link.project_id!)
       .maybeSingle();
     if (!project) {
       return NextResponse.json({ error: "project not found" }, { status: 404 });
     }
 
-    const [{ data: owner }, { data: branches }, { data: versions }] =
-      await Promise.all([
-        admin
-          .from("profiles")
-          .select("username, display_name, avatar_url")
-          .eq("id", project.user_id)
-          .maybeSingle(),
-        admin
-          .from("branches")
+    const { data: owner } = await admin
+      .from("profiles")
+      .select("username, display_name, avatar_url")
+      .eq("id", project.user_id)
+      .maybeSingle();
+
+    // Storage paths are owner-only knowledge — never hand them to viewers.
+    const strip = (v: Version): Version => ({
+      ...v,
+      flp_storage_path: null,
+      mp3_storage_path: null,
+    });
+    const projectMeta = {
+      id: project.id,
+      title: project.title,
+      artwork_url: project.artwork_url,
+      main_version_id: project.main_version_id,
+      owner: owner ?? null,
+    };
+
+    // Main-only: hand over just the Main version (or the latest ready one).
+    // The recipient never learns other versions or branches exist.
+    if (!project.show_history) {
+      let main: Version | null = null;
+      if (project.main_version_id) {
+        const { data } = await admin
+          .from("versions")
           .select("*")
-          .eq("project_id", project.id)
-          .returns<Branch[]>(),
-        admin
+          .eq("id", project.main_version_id)
+          .maybeSingle();
+        if (data?.render_status === "ready") main = data;
+      }
+      if (!main) {
+        const { data } = await admin
           .from("versions")
           .select("*")
           .eq("project_id", project.id)
-          .order("uploaded_at", { ascending: true })
-          .returns<Version[]>(),
-      ]);
+          .eq("render_status", "ready")
+          .order("uploaded_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        main = data ?? null;
+      }
+      await countView();
+      return NextResponse.json({
+        scope: "project",
+        show_history: false,
+        project: projectMeta,
+        branches: [],
+        versions: main ? [strip(main)] : [],
+      });
+    }
+
+    const [{ data: branches }, { data: versions }] = await Promise.all([
+      admin.from("branches").select("*").eq("project_id", project.id).returns<Branch[]>(),
+      admin
+        .from("versions")
+        .select("*")
+        .eq("project_id", project.id)
+        .order("uploaded_at", { ascending: true })
+        .returns<Version[]>(),
+    ]);
 
     await countView();
 
     return NextResponse.json({
       scope: "project",
-      project: {
-        id: project.id,
-        title: project.title,
-        artwork_url: project.artwork_url,
-        main_version_id: project.main_version_id,
-        owner: owner ?? null,
-      },
+      show_history: true,
+      project: projectMeta,
       branches: branches ?? [],
-      // Storage paths are owner-only knowledge — never hand them to viewers.
-      versions: (versions ?? []).map((v) => ({
-        ...v,
-        flp_storage_path: null,
-        mp3_storage_path: null,
-      })),
+      versions: (versions ?? []).map(strip),
     });
   }
 

@@ -26,6 +26,8 @@ export type SharedProjectPayload = {
   };
   branches: Branch[];
   versions: Version[];
+  /** false => Main-only link: one track, no tree (defaults to full history). */
+  show_history?: boolean;
 };
 
 /**
@@ -43,6 +45,7 @@ export function SharedProjectView({
   payload: SharedProjectPayload;
 }) {
   const { project, branches, versions } = payload;
+  const showHistory = payload.show_history !== false; // legacy payloads = full
   const [selected, setSelected] = useState<Version | null>(
     () =>
       versions.find((v) => v.id === project.main_version_id) ??
@@ -99,54 +102,61 @@ export function SharedProjectView({
               <StatusBadge>private preview</StatusBadge>
             </div>
             <p className="mt-1 text-body-sm text-ink-subtle">
-              {ownerName ? `by ${ownerName} · ` : ""}
-              {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
-              {versions.length} version{versions.length === 1 ? "" : "s"}
+              {ownerName ? `by ${ownerName}` : ""}
+              {showHistory && (
+                <>
+                  {ownerName ? " · " : ""}
+                  {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
+                  {versions.length} version{versions.length === 1 ? "" : "s"}
+                </>
+              )}
             </p>
           </div>
         </div>
       </div>
 
-      <Panel className="mt-8 overflow-hidden">
-        <div className="mb-6 flex items-center justify-between">
-          <Eyebrow>Timeline</Eyebrow>
-          <div className="flex gap-1" role="tablist" aria-label="Timeline view">
-            {(["tree", "graph"] as const).map((mode) => (
-              <button
-                key={mode}
-                role="tab"
-                aria-selected={view === mode}
-                onClick={() => setView(mode)}
-                className={cn(
-                  "border px-3.5 py-1.5 text-button capitalize transition-colors",
-                  view === mode
-                    ? "border-hairline-strong bg-surface-2 text-ink"
-                    : "border-transparent text-ink-subtle hover:text-ink"
-                )}
-              >
-                {mode}
-              </button>
-            ))}
+      {showHistory && (
+        <Panel className="mt-8 overflow-hidden">
+          <div className="mb-6 flex items-center justify-between">
+            <Eyebrow>Timeline</Eyebrow>
+            <div className="flex gap-1" role="tablist" aria-label="Timeline view">
+              {(["tree", "graph"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  role="tab"
+                  aria-selected={view === mode}
+                  onClick={() => setView(mode)}
+                  className={cn(
+                    "border px-3.5 py-1.5 text-button capitalize transition-colors",
+                    view === mode
+                      ? "border-hairline-strong bg-surface-2 text-ink"
+                      : "border-transparent text-ink-subtle hover:text-ink"
+                  )}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-        {view === "graph" ? (
-          <VersionGraph
-            branches={branches}
-            versions={versions}
-            mainVersionId={project.main_version_id}
-            selectedId={selected?.id ?? null}
-            onSelect={setSelected}
-          />
-        ) : (
-          <TimelineTree
-            branches={branches}
-            versions={versions}
-            mainVersionId={project.main_version_id}
-            selectedId={selected?.id ?? null}
-            onSelect={setSelected}
-          />
-        )}
-      </Panel>
+          {view === "graph" ? (
+            <VersionGraph
+              branches={branches}
+              versions={versions}
+              mainVersionId={project.main_version_id}
+              selectedId={selected?.id ?? null}
+              onSelect={setSelected}
+            />
+          ) : (
+            <TimelineTree
+              branches={branches}
+              versions={versions}
+              mainVersionId={project.main_version_id}
+              selectedId={selected?.id ?? null}
+              onSelect={setSelected}
+            />
+          )}
+        </Panel>
+      )}
 
       {selected && (
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">

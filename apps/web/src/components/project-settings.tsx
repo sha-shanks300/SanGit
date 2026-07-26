@@ -157,34 +157,33 @@ export function ProjectSettings({
               {isPublic ? "Public" : "Private"}
             </button>
           </div>
-          {isPublic && (
-            <>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-body-sm text-ink">Visitors see</span>
-                <button
-                  type="button"
-                  aria-pressed={showHistory}
-                  onClick={() => setShowHistory((h) => !h)}
-                  className={cn(
-                    "cursor-pointer border px-3.5 py-1.5 text-button transition-colors",
-                    showHistory
-                      ? "border-hairline-strong bg-surface-2 text-success"
-                      : "border-hairline text-ink-subtle hover:text-ink"
-                  )}
-                >
-                  {showHistory ? "All versions" : "Main only"}
-                </button>
-              </div>
-              <p className="mt-2 text-caption text-ink-tertiary">
-                Visible at /p/{project.slug}.{" "}
-                {showHistory
-                  ? "Visitors see every version and the tree."
-                  : "Visitors hear one track only."}
-                {!project.main_version_id &&
-                  " No Main set, so visitors hear your latest version until you pick one."}
-              </p>
-            </>
-          )}
+          {/* Depth of any shared view — public page (when public) AND private
+              share links both honor this one setting. */}
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-body-sm text-ink">Shared view</span>
+            <button
+              type="button"
+              aria-pressed={showHistory}
+              onClick={() => setShowHistory((h) => !h)}
+              className={cn(
+                "cursor-pointer border px-3.5 py-1.5 text-button transition-colors",
+                showHistory
+                  ? "border-hairline-strong bg-surface-2 text-success"
+                  : "border-hairline text-ink-subtle hover:text-ink"
+              )}
+            >
+              {showHistory ? "All versions" : "Main only"}
+            </button>
+          </div>
+          <p className="mt-2 text-caption text-ink-tertiary">
+            Applies to {isPublic ? `your public page (/p/${project.slug}) and ` : ""}
+            private share links.{" "}
+            {showHistory
+              ? "They see every version and the tree."
+              : "They hear the Main track only."}
+            {!project.main_version_id &&
+              " No Main set, so they hear your latest version until you pick one."}
+          </p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="tertiary" onClick={() => setOpen(false)}>
               Cancel
