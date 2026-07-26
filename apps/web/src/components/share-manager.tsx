@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ShareLink } from "@/lib/database.types";
 import { Button, Input } from "@/components/ui";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 type Scope = "project" | "version";
 
@@ -19,16 +19,20 @@ export function ShareManager({
   projectId,
   lockVersion = false,
   defaultExpiryHours = 168,
+  projectShowHistory,
 }: {
-  /** Selected version for "this version only" links; null disables that scope. */
+  /** Selected version for version-scoped ("Share version…") links. */
   versionId: string | null;
   projectId: string;
-  /** Lock to version scope (hide the scope tabs) — used by "Share version…". */
+  /** Lock to version scope — used by "Share version…". */
   lockVersion?: boolean;
   defaultExpiryHours?: number;
+  /** Current project Main/All setting, for the header note (project links). */
+  projectShowHistory?: boolean;
 }) {
   const [links, setLinks] = useState<ShareLink[]>([]);
-  const [scope, setScope] = useState<Scope>(lockVersion ? "version" : "project");
+  // No scope toggle: node links are version-scoped, the header is project-scoped.
+  const scope: Scope = lockVersion ? "version" : "project";
   const [expiresHours, setExpiresHours] = useState(String(defaultExpiryHours));
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -51,10 +55,6 @@ export function ShareManager({
     setPrevVersionId(versionId);
     setFreshUrl(null);
   }
-
-  // Version scope needs a selected version; fall back to project when there
-  // isn't one (adjust-during-render, converges in one extra pass).
-  if (versionId === null && scope === "version") setScope("project");
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
@@ -94,12 +94,9 @@ export function ShareManager({
     refetch();
   }
 
-  // Locked mode shows only this version's links; otherwise project-wide links
-  // plus links for the currently selected version.
+  // Locked mode shows only this version's links; the header shows project links.
   const visible = links.filter((l) =>
-    lockVersion
-      ? l.version_id === versionId
-      : l.version_id === null || l.version_id === versionId
+    lockVersion ? l.version_id === versionId : l.version_id === null
   );
 
   return (
@@ -107,35 +104,13 @@ export function ShareManager({
       <p className="text-caption text-ink-subtle">Private share links</p>
 
       {!lockVersion && (
-        <div className="mt-2 flex gap-1" role="tablist" aria-label="Share scope">
-          {(
-            [
-              ["project", "All versions"],
-              ["version", "This version only"],
-            ] as const
-          ).map(([value, label]) => {
-            const disabled = value === "version" && versionId === null;
-            return (
-              <button
-                key={value}
-                role="tab"
-                aria-selected={scope === value}
-                disabled={disabled}
-                title={disabled ? "Select a version first" : undefined}
-                onClick={() => setScope(value)}
-                className={cn(
-                  "border px-3 py-1 text-caption transition-colors",
-                  scope === value
-                    ? "border-hairline-strong bg-surface-2 text-ink"
-                    : "border-transparent text-ink-subtle hover:text-ink",
-                  disabled && "cursor-not-allowed opacity-40 hover:text-ink-subtle"
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        <p className="mt-1 text-caption text-ink-tertiary">
+          Recipients see{" "}
+          {projectShowHistory
+            ? "every version and the tree"
+            : "the Main track only"}{" "}
+          — set by your project&apos;s Main / All versions setting.
+        </p>
       )}
 
       <div className="mt-3 flex items-center gap-2">

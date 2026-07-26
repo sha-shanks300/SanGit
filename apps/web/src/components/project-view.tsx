@@ -172,7 +172,11 @@ export function ProjectView({
         </div>
         <div className="flex items-center gap-2">
           {isOwner && (
-            <ShareButton projectId={project.id} versionId={selected?.id ?? null} />
+            <ShareButton
+              projectId={project.id}
+              versionId={selected?.id ?? null}
+              showHistory={project.show_history}
+            />
           )}
           {headerActions}
         </div>
