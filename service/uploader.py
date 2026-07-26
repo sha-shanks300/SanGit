@@ -99,9 +99,10 @@ class UploadWorker:
         )
         store.commit_done(row["id"], init["version_id"], duplicate=False)
         store.add_render(init["version_id"], str(snapshot))
-        # Track the branch this file now lives on (a fresh one after a Branch &
-        # commit) so subsequent normal commits continue on the same line.
-        if row["flp_path"]:
+        # Move the file's home branch ONLY when a new branch was created — so a
+        # fork follows the file, but appending onto an existing branch (the
+        # current one or one picked from the dropdown) is a one-off.
+        if row["flp_path"] and init.get("branch_created"):
             store.file_branch_set(row["flp_path"], init["branch_id"])
         log.info("commit #%s uploaded as version %s; render queued",
                  row["id"], init["version_id"])
