@@ -180,6 +180,9 @@ class App(QObject):
                             on_request_branches=self._request_branches)
         self._active_toast = toast
         toast.open()
+        # Load the branch list now, not on first click: the dropdown must
+        # already hold the project's branches when the user opens it.
+        toast.request_branches()
 
     def _on_toast_done(self, flp_path: str, outcome: dict | None):
         # main thread (toast fade-out). None = Skip -> just move to next project.
@@ -209,7 +212,7 @@ class App(QObject):
         else:
             self.commit_settled.emit(-1, False)  # never queued -> fail the card
 
-    # ---- branch dropdown: lazily fetch the project's branches on demand ----
+    # ---- branch dropdown: fetch the project's branches as the toast opens ----
     def _request_branches(self, flp_path: str):  # main thread (from the toast)
         def work():
             project_id = committer.read_project_id(flp_path)
@@ -219,12 +222,14 @@ class App(QObject):
                 data = self.client.list_branches(project_id)
             except ApiError:
                 return  # offline -> the dropdown stays a free-text box
-            self.branches_loaded.emit(data)
+            # carry the file's home branch so the picker can pre-select it
+            self.branches_loaded.emit((data, store.file_branch_get(flp_path)))
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_branches_loaded(self, branches: object):  # main thread
+    def _on_branches_loaded(self, payload: object):  # main thread
+        branches, current_branch_id = payload
         if self._active_toast is not None:
-            self._active_toast.set_branches(branches)
+            self._active_toast.set_branches(branches, current_branch_id)
 
     # ---- the single card: upload -> export -> done ----
     def _begin_card(self):
@@ -616,12 +621,57 @@ def _preview_upload():
     qapp.exec()
 
 
+def _preview_commit():
+    """Dev-only: pop the commit toast with mock branches and print the outcome
+    instead of committing. Lets the window (and the branch dropdown) be tested
+    without an FL open/save/close cycle, and touches neither the queue nor the
+    network. `empty` previews a project with no branches yet."""
+    from popup import CommitToast
+
+    qapp = QApplication(sys.argv)
+    theme.load_bundled_fonts()
+    qapp.setWindowIcon(theme.app_icon())
+    qapp.setStyleSheet(theme.qss())
+
+    branches = ([] if "empty" in sys.argv else
+                [{"id": "b1", "name": "main"},
+                 {"id": "b2", "name": "boombap"},
+                 {"id": "b3", "name": "trap-vox"}])
+
+    def done(flp_path: str, outcome: dict | None):
+        if outcome is None:
+            print("\n  SKIPPED — no version committed")
+        elif outcome.get("new_branch"):
+            print(f"\n  COMMIT TO NEW BRANCH '{outcome['new_branch']}'"
+                  f" — version name: {outcome.get('name') or '(none)'}")
+        elif outcome.get("branch_id"):
+            name = next((b["name"] for b in branches
+                         if b["id"] == outcome["branch_id"]), outcome["branch_id"])
+            print(f"\n  COMMIT ONTO EXISTING BRANCH '{name}'"
+                  f" — version name: {outcome.get('name') or '(none)'}")
+        else:
+            print(f"\n  COMMIT to the current branch"
+                  f" — version name: {outcome.get('name') or '(none)'}")
+        print("  (preview only — nothing was committed or uploaded)")
+        qapp.quit()
+
+    toast = CommitToast("C:/Music/Demo Project/burn.flp", timeout_secs=600,
+                        on_done=done, timeout_action="skip")
+    toast.open()
+    toast.set_branches(branches, current_branch_id="b2")
+    print("Commit-toast preview — pick or type a branch, then click a button.")
+    qapp.exec()
+
+
 def main():
     _set_app_identity()
     _setup_logging()
     log.info("SanGit v%s starting", version.__version__)
     if "--preview-upload" in sys.argv:
         _preview_upload()
+        return
+    if "--preview-commit" in sys.argv:
+        _preview_commit()
         return
     if _already_running():
         log.error("SanGit service is already running (check the tray, next "
