@@ -6,19 +6,23 @@ import { useEffect, useRef } from "react";
  * Left-click menu for a fork branch's label (Tree view). Positioned at the
  * pointer in viewport coordinates; dismissed by click-away or Escape. Only
  * shown for forks — the trunk ("main") has no menu.
+ *
+ * "Set as Main" stars this take's tip version (reuses the version-level Set as
+ * Main); `isMain` shows it as the current pick instead. There is no "merge" —
+ * you don't fuse two arrangements, you crown a winner.
  */
 export function BranchActionsMenu({
   x,
   y,
-  parentLabel,
-  onMerge,
+  isMain,
+  onSetMain,
   onDelete,
   onClose,
 }: {
   x: number;
   y: number;
-  parentLabel: string;
-  onMerge: () => void;
+  isMain: boolean;
+  onSetMain: () => void;
   onDelete: () => void;
   onClose: () => void;
 }) {
@@ -50,17 +54,23 @@ export function BranchActionsMenu({
       className="fixed z-50 w-52 border border-hairline-strong bg-surface-3 py-1"
       style={{ left, top }}
     >
-      <button
-        type="button"
-        role="menuitem"
-        className="block w-full cursor-pointer truncate px-4 py-2 text-left text-body-sm text-ink transition-colors hover:bg-surface-2"
-        onClick={() => {
-          onMerge();
-          onClose();
-        }}
-      >
-        Merge into {parentLabel}…
-      </button>
+      {isMain ? (
+        <div className="block w-full cursor-default px-4 py-2 text-left text-body-sm text-ink-subtle">
+          Current Main
+        </div>
+      ) : (
+        <button
+          type="button"
+          role="menuitem"
+          className="block w-full cursor-pointer px-4 py-2 text-left text-body-sm text-ink transition-colors hover:bg-surface-2"
+          onClick={() => {
+            onSetMain();
+            onClose();
+          }}
+        >
+          Set as Main
+        </button>
+      )}
       <button
         type="button"
         role="menuitem"

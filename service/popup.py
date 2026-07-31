@@ -93,6 +93,10 @@ class CommitToast(QWidget):
             f" selection-background-color: {theme.SURFACE_4}; }}"
             f"QComboBox QAbstractItemView::item {{ min-height: 24px;"
             f" padding: 2px 8px; }}"
+            # page-1 destination cue: subtle mono, so a plain Commit's target
+            # branch is never a guess (the accent arrow is the only splash).
+            f"QLabel#target {{ color: {theme.INK_SUBTLE}; }}"
+            f"QLabel#targetArrow {{ color: {theme.PRIMARY}; }}"
             # "+ New branch" gate: a sharp hairline box that fills Rosso Corsa
             # when armed (mirrors theme.py's QMenu checked-indicator). The label
             # brightens to ink white while checked so the active mode reads at a
@@ -169,6 +173,25 @@ class CommitToast(QWidget):
         lay.setContentsMargins(PAD, PAD - 4, PAD, PAD)
         lay.setSpacing(0)
         self._header(lay, "Commit this version?")
+
+        # where a plain Commit lands — the file's current branch (trunk shows
+        # "main"). Resolved from the fetched branches in set_branches; until then
+        # it shows the filename stem, which is the branch a first commit creates.
+        lay.addSpacing(7)
+        row = QWidget()
+        trow = QHBoxLayout(row)
+        trow.setContentsMargins(0, 0, 0, 0)
+        trow.setSpacing(6)
+        arrow = QLabel("→")
+        arrow.setObjectName("targetArrow")
+        arrow.setFont(theme.font("mono", 9))
+        self._target = QLabel(Path(self._flp_path).stem)
+        self._target.setObjectName("target")
+        self._target.setFont(theme.font("mono", 9))
+        trow.addWidget(arrow)
+        trow.addWidget(self._target)
+        trow.addStretch(1)
+        lay.addWidget(row)
 
         lay.addSpacing(16)
         lay.addWidget(theme.field_label("Version name · optional"))
@@ -330,12 +353,22 @@ class CommitToast(QWidget):
         self._has_branches = True
         current = 0
         for i, b in enumerate(branches):
-            self._existing.addItem(b["name"], b["id"])
+            self._existing.addItem(self._branch_label(b), b["id"])
             if b["id"] == current_branch_id:
                 current = i
         self._existing.setCurrentIndex(current)
         # a real list arrived: the dropdown leads unless the gate is armed
         self._existing.setEnabled(not self._new_check.isChecked())
+        # reflect where a plain Commit on page 1 would land
+        target = next((self._branch_label(b) for b in branches
+                       if b["id"] == current_branch_id), None)
+        self._target.setText(target or Path(self._flp_path).stem)
+
+    @staticmethod
+    def _branch_label(b: dict) -> str:
+        """Display name for a branch — the trunk (no parent) reads 'main',
+        mirroring the web tree; forks show their own name."""
+        return "main" if b.get("parent_branch_id") is None else b["name"]
 
     # ---- outcomes ----
     def _commit(self):

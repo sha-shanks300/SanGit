@@ -4,7 +4,9 @@ import { authenticateDevice, isUuid } from "@/lib/ingest-auth";
 
 /**
  * List a project's branches for the local service's "Commit to branch"
- * dropdown. Device-authed; scoped to the device owner. Returns [{id, name}].
+ * dropdown. Device-authed; scoped to the device owner. Returns
+ * [{id, name, parent_branch_id}] — parent_branch_id null marks the trunk, which
+ * the popup labels "main".
  */
 export async function GET(request: Request) {
   const auth = await authenticateDevice(request);
@@ -19,7 +21,7 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("branches")
-    .select("id, name")
+    .select("id, name, parent_branch_id")
     .eq("project_id", projectId)
     .eq("user_id", device.user_id)
     .order("created_at", { ascending: true });
