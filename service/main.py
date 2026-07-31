@@ -635,10 +635,11 @@ def _preview_commit():
     qapp.setWindowIcon(theme.app_icon())
     qapp.setStyleSheet(theme.qss())
 
+    # b1 is the trunk (parent None) — the popup relabels it "main"; b2/b3 fork it
     branches = ([] if "empty" in sys.argv else
-                [{"id": "b1", "name": "main"},
-                 {"id": "b2", "name": "boombap"},
-                 {"id": "b3", "name": "trap-vox"}])
+                [{"id": "b1", "name": "burn", "parent_branch_id": None},
+                 {"id": "b2", "name": "boombap", "parent_branch_id": "b1"},
+                 {"id": "b3", "name": "trap-vox", "parent_branch_id": "b1"}])
 
     def done(flp_path: str, outcome: dict | None):
         if outcome is None:
