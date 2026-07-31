@@ -16,7 +16,6 @@ import { ShareVersionDialog } from "@/components/share-version-dialog";
 import { BranchActionsMenu } from "@/components/branch-actions-menu";
 import { DeleteVersionDialog } from "@/components/delete-version-dialog";
 import { DeleteBranchDialog } from "@/components/delete-branch-dialog";
-import { MergeBranchDialog } from "@/components/merge-branch-dialog";
 import { Interactions } from "@/components/interactions";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ShareButton } from "@/components/share-button";
@@ -51,7 +50,6 @@ export function ProjectView({
     x: number;
     y: number;
   } | null>(null);
-  const [mergingBranch, setMergingBranch] = useState<Branch | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
 
   useEffect(() => {
@@ -97,22 +95,22 @@ export function ProjectView({
     refetch();
   }
 
-  // A branch's display name, mirroring the tree: the trunk reads "main".
-  const branchLabel = (b: Branch | undefined) =>
-    !b ? "main" : b.parent_branch_id === null ? "main" : b.name;
-  const parentOf = (b: Branch) =>
-    branches.find((x) => x.id === b.parent_branch_id);
   const versionsOn = (branchId: string) =>
     versions.filter((v) => v.branch_id === branchId);
+  // A branch's tip = its most recent version (versions arrive sorted asc by
+  // uploaded_at), i.e. the version "Set as Main" on a branch stars.
+  const branchTip = (branchId: string): Version | null => {
+    const list = versionsOn(branchId);
+    return list.length ? list[list.length - 1] : null;
+  };
+  function setBranchMain(branch: Branch) {
+    const tip = branchTip(branch.id);
+    if (tip) setMain(tip); // stars this take's latest version
+  }
 
   function onBranchDeleted() {
     setSelected(null); // versions on that branch are gone; fall back to Main/none
     setDeletingBranch(null);
-    refetch();
-  }
-  function onBranchMerged() {
-    // versions survive (re-parented); selection stays valid
-    setMergingBranch(null);
     refetch();
   }
 
@@ -274,20 +272,10 @@ export function ProjectView({
         <BranchActionsMenu
           x={branchMenu.x}
           y={branchMenu.y}
-          parentLabel={branchLabel(parentOf(branchMenu.branch))}
-          onMerge={() => setMergingBranch(branchMenu.branch)}
+          isMain={branchTip(branchMenu.branch.id)?.id === project.main_version_id}
+          onSetMain={() => setBranchMain(branchMenu.branch)}
           onDelete={() => setDeletingBranch(branchMenu.branch)}
           onClose={() => setBranchMenu(null)}
-        />
-      )}
-
-      {mergingBranch && (
-        <MergeBranchDialog
-          branch={mergingBranch}
-          parentLabel={branchLabel(parentOf(mergingBranch))}
-          versionCount={versionsOn(mergingBranch.id).length}
-          onClose={() => setMergingBranch(null)}
-          onMerged={onBranchMerged}
         />
       )}
 
