@@ -1,11 +1,15 @@
-"""Commit prompt: a frameless topmost toast (bottom-right, near the tray)
-with an optional version-name field. Fades in/out and shows a draining
-countdown hairline. In the commit-on-close flow the countdown AUTO-COMMITS
-when it drains (so a finished session is never silently lost); typing pauses
-it, and Skip is the only way to discard. The App shows one toast at a time
-and decides what happens on the outcome.
+"""Commit prompt: a frameless topmost toast (bottom-right, near the tray).
 
-All UI lives on the Qt main thread.
+Two pages in one fixed-size window:
+  1. Commit — a version-name field and Skip / Commit to branch / Commit.
+     Plain Commit lands on the file's current branch; if ignored the draining
+     countdown auto-commits there (a finished session is never silently lost).
+  2. Branch — reached via "Commit to branch": a click-to-open dropdown of the
+     project's existing branches (loaded while the window was already open) and
+     a separate "new branch" field. Typed name wins; a Back button returns.
+
+The App shows one toast at a time and decides what the outcome does. All UI
+lives on the Qt main thread.
 """
 
 import logging
@@ -14,8 +18,9 @@ from typing import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QColor, QGuiApplication, QPainter, QPen
-from PySide6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
-                               QPushButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel,
+                               QLineEdit, QPushButton, QStackedWidget, QVBoxLayout,
+                               QWidget)
 
 import theme
 
@@ -26,27 +31,25 @@ PAD = 20  # card interior padding
 
 
 class _BranchCombo(QComboBox):
-    """Branch picker: a real click-to-open list of the project's branches that
-    still accepts a typed name to fork a new one. The list is filled eagerly
-    when the toast opens (see App._process_close_queue) so the dropdown is
-    never empty on first click. Inline autocompletion is off — it made the
-    control feel like an autofill box rather than a list."""
+    """Non-editable branch picker — a real click-to-open list. Creating a new
+    branch is a separate field on the branch page, so this control does exactly
+    one thing (pick an existing branch), which is what makes it read as a list
+    rather than the autofill box it used to."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setEditable(True)
-        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-        self.setCompleter(None)  # no autofill-style inline completion
-        self.lineEdit().setClearButtonEnabled(False)
         self.setMaxVisibleItems(8)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def paintEvent(self, event):
         super().paintEvent(event)
         # hairline chevron on the trailing edge — the affordance that says
-        # "this is a list", drawn to match the design system's stroke weight.
+        # "this is a list", drawn to the design system's stroke weight.
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        p.setPen(QPen(QColor(theme.INK_SUBTLE), 1.4))
+        # dim the chevron in step with the greyed text when the picker is off
+        stroke = theme.INK_SUBTLE if self.isEnabled() else theme.INK_TERTIARY
+        p.setPen(QPen(QColor(stroke), 1.4))
         cx = self.width() - 15
         cy = self.height() / 2 - 1
         p.drawLine(cx - 4, cy - 1, cx, cy + 3)
@@ -66,16 +69,12 @@ class CommitToast(QWidget):
         self._on_done = on_done
         self._timeout_action = timeout_action  # 'commit' | 'skip' when countdown drains
         self._on_request_branches = on_request_branches
-        self._branch_ids: dict[str, str] = {}  # branch name -> id (existing branches)
+        self._has_branches = False  # set once set_branches lands a real list
         self._closed = False
         self.setFixedWidth(WIDTH)
-        # the toast itself can hold focus, so no input has to (see open())
+        # the toast itself holds focus, so no input starts out ringed (see open)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-        # surface-1 plate with a 1px hairline border; keep selectors narrow so
-        # the app-level button/label styles still apply. The text field and the
-        # branch combo are styled identically (same height, border, canvas fill)
-        # so they read as one set of inputs rather than two different controls.
         field = (f"background: {theme.CANVAS}; color: {theme.INK};"
                  f" border: 1px solid {theme.HAIRLINE_STRONG}; border-radius: 0;"
                  f" padding: 7px 10px; min-height: 17px;")
@@ -85,11 +84,8 @@ class CommitToast(QWidget):
             f"QLineEdit {{ {field} }}"
             f"QComboBox {{ {field} padding-right: 26px; }}"
             f"QComboBox:hover {{ border: 1px solid {theme.HAIRLINE_TERTIARY}; }}"
-            # the combo's inner editor must not draw a second box inside the frame
-            f"QComboBox QLineEdit {{ background: transparent; border: none;"
-            f" padding: 0; min-height: 0; }}"
-            # the chevron is painted in _BranchCombo.paintEvent (QSS can't
-            # rotate a border into one, and the native arrow is off-theme)
+            f"QComboBox:disabled {{ color: {theme.INK_TERTIARY}; }}"
+            # the chevron is painted in _BranchCombo.paintEvent
             f"QComboBox::drop-down {{ border: none; width: 0; }}"
             f"QComboBox QAbstractItemView {{ background: {theme.SURFACE_3};"
             f" color: {theme.INK}; border: 1px solid {theme.HAIRLINE_TERTIARY};"
@@ -97,8 +93,18 @@ class CommitToast(QWidget):
             f" selection-background-color: {theme.SURFACE_4}; }}"
             f"QComboBox QAbstractItemView::item {{ min-height: 24px;"
             f" padding: 2px 8px; }}"
-            # the two commit actions sit side by side, so they must share a
-            # baseline: same vertical padding, outline slightly lighter weight
+            # "+ New branch" gate: a sharp hairline box that fills Rosso Corsa
+            # when armed (mirrors theme.py's QMenu checked-indicator). The label
+            # brightens to ink white while checked so the active mode reads at a
+            # glance; muted otherwise.
+            f"QCheckBox {{ color: {theme.INK_MUTED}; spacing: 9px; }}"
+            f"QCheckBox:checked {{ color: {theme.INK}; }}"
+            f"QCheckBox::indicator {{ width: 13px; height: 13px;"
+            f" background: {theme.CANVAS};"
+            f" border: 1px solid {theme.HAIRLINE_TERTIARY}; }}"
+            f"QCheckBox::indicator:hover {{ border-color: {theme.INK}; }}"
+            f"QCheckBox::indicator:checked {{ background: {theme.PRIMARY};"
+            f" border-color: {theme.PRIMARY}; }}"
             f"QPushButton#outline {{ padding: 8px 16px; border-color:"
             f" {theme.HAIRLINE_TERTIARY}; color: {theme.INK_MUTED}; }}"
             f"QPushButton#outline:hover {{ border-color: {theme.INK};"
@@ -106,76 +112,23 @@ class CommitToast(QWidget):
             f"QPushButton#primary {{ padding: 8px 18px; }}"
             f"QPushButton#ghost {{ padding: 8px 10px; }}")
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(PAD, PAD - 4, PAD, 0)
-        lay.setSpacing(0)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        lay.addWidget(theme.eyebrow_row("SanGit — FL closed", self))
-        lay.addSpacing(8)
-        title = QLabel("Commit this version?", self)
-        title.setObjectName("title")
-        title.setFont(theme.font("display", 12))
-        lay.addWidget(title)
-        lay.addSpacing(2)
-        fname = QLabel(Path(flp_path).name, self)
-        fname.setObjectName("filename")
-        fname.setFont(theme.font("mono", 9))
-        lay.addWidget(fname)
+        self._stack = QStackedWidget(self)
+        self._stack.addWidget(self._build_commit_page())  # index 0
+        self._stack.addWidget(self._build_branch_page())  # index 1
+        outer.addWidget(self._stack)
 
-        lay.addSpacing(16)
-        lay.addWidget(theme.field_label("Version name · optional", self))
-        lay.addSpacing(5)
-        self.entry = QLineEdit(self)
-        self.entry.setFont(theme.font("body", 10))
-        self.entry.setPlaceholderText("what changed?")
-        self.entry.returnPressed.connect(self._commit)
-        self.entry.textEdited.connect(self._pause_countdown)
-        lay.addWidget(self.entry)
-
-        lay.addSpacing(12)
-        lay.addWidget(theme.field_label("Branch", self))
-        lay.addSpacing(5)
-        self._branch = _BranchCombo(self)
-        self._branch.setFont(theme.font("body", 10))
-        self._branch.lineEdit().setPlaceholderText("pick a branch, or type a new name")
-        self._branch.lineEdit().returnPressed.connect(self._commit_to_branch)
-        self._branch.editTextChanged.connect(lambda _t: self._pause_countdown())
-        lay.addWidget(self._branch)
-
-        lay.addSpacing(20)
-        btns = QHBoxLayout()
-        btns.setContentsMargins(0, 0, 0, 0)
-        skip = QPushButton("Skip", self)
-        skip.setObjectName("ghost")
-        skip.setFont(theme.font("body", 10))
-        skip.setCursor(Qt.CursorShape.PointingHandCursor)
-        skip.clicked.connect(self._skip)
-        branch_btn = QPushButton("Commit to branch", self)
-        branch_btn.setObjectName("outline")
-        branch_btn.setFont(theme.font("body", 10))
-        branch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        branch_btn.clicked.connect(self._commit_to_branch)
-        commit_btn = QPushButton("Commit", self)
-        commit_btn.setObjectName("primary")
-        commit_btn.setFont(theme.font("body", 10))
-        commit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        commit_btn.clicked.connect(self._commit)
-        btns.addWidget(skip)
-        btns.addStretch(1)
-        btns.addWidget(branch_btn)
-        btns.addSpacing(8)
-        btns.addWidget(commit_btn)
-        lay.addLayout(btns)
-        lay.addSpacing(PAD)
-
-        # Auto-dismiss countdown: a draining hairline along the bottom edge.
-        track = QFrame(self)
-        track.setFixedHeight(2)
-        track.setStyleSheet(f"background: {theme.SURFACE_2};")
-        self._bar = QFrame(track)
+        # draining countdown hairline along the very bottom edge (page 1 only)
+        self._track = QFrame(self)
+        self._track.setFixedHeight(2)
+        self._track.setStyleSheet(f"background: {theme.SURFACE_2};")
+        self._bar = QFrame(self._track)
         self._bar.setFixedHeight(2)
         self._bar.setStyleSheet(f"background: {theme.HAIRLINE_TERTIARY};")
-        lay.addWidget(track)
+        outer.addWidget(self._track)
 
         self._paused = False
         self._remaining_ms = timeout_secs * 1000
@@ -188,17 +141,111 @@ class CommitToast(QWidget):
         self._fade.setDuration(160)
         self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
 
+    # ---- pages ----
+    def _header(self, lay: QVBoxLayout, title_text: str):
+        lay.addWidget(theme.eyebrow_row("SanGit — FL closed"))
+        lay.addSpacing(8)
+        title = QLabel(title_text)
+        title.setObjectName("title")
+        title.setFont(theme.font("display", 12))
+        lay.addWidget(title)
+        lay.addSpacing(2)
+        fname = QLabel(Path(self._flp_path).name)
+        fname.setObjectName("filename")
+        fname.setFont(theme.font("mono", 9))
+        lay.addWidget(fname)
+
+    def _button(self, text: str, obj: str, slot) -> QPushButton:
+        b = QPushButton(text)
+        b.setObjectName(obj)
+        b.setFont(theme.font("body", 10))
+        b.setCursor(Qt.CursorShape.PointingHandCursor)
+        b.clicked.connect(slot)
+        return b
+
+    def _build_commit_page(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(PAD, PAD - 4, PAD, PAD)
+        lay.setSpacing(0)
+        self._header(lay, "Commit this version?")
+
+        lay.addSpacing(16)
+        lay.addWidget(theme.field_label("Version name · optional"))
+        lay.addSpacing(5)
+        self.entry = QLineEdit()
+        self.entry.setFont(theme.font("body", 10))
+        self.entry.returnPressed.connect(self._commit)
+        self.entry.textEdited.connect(self._pause_countdown)
+        lay.addWidget(self.entry)
+
+        lay.addStretch(1)
+        btns = QHBoxLayout()
+        btns.setContentsMargins(0, 0, 0, 0)
+        btns.addWidget(self._button("Skip", "ghost", self._skip))
+        btns.addStretch(1)
+        btns.addWidget(self._button("Commit to branch", "outline", self._go_branch))
+        btns.addSpacing(8)
+        btns.addWidget(self._button("Commit", "primary", self._commit))
+        lay.addLayout(btns)
+        return page
+
+    def _build_branch_page(self) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(PAD, PAD - 4, PAD, PAD)
+        lay.setSpacing(0)
+        self._header(lay, "Commit to a branch")
+
+        lay.addSpacing(16)
+        lay.addWidget(theme.field_label("Existing branch"))
+        lay.addSpacing(5)
+        self._existing = _BranchCombo()
+        self._existing.setFont(theme.font("body", 10))
+        self._existing.addItem("Loading your branches…")  # replaced by set_branches
+        self._existing.setEnabled(False)
+        lay.addWidget(self._existing)
+
+        # "+ New branch" gate: off by default, so the dropdown above stays the
+        # active control. Checking it hands the field below the focus and greys
+        # the dropdown — exactly one of the two is ever live.
+        lay.addSpacing(14)
+        self._new_check = QCheckBox("+ New branch")
+        self._new_check.setFont(theme.font("body", 10))
+        self._new_check.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._new_check.toggled.connect(self._toggle_new_branch)
+        lay.addWidget(self._new_check)
+
+        lay.addSpacing(7)
+        self._new_branch = QLineEdit()
+        self._new_branch.setFont(theme.font("body", 10))
+        self._new_branch.setPlaceholderText("name your new branch")
+        self._new_branch.setEnabled(False)  # armed by the checkbox
+        self._new_branch.returnPressed.connect(self._commit_branch)
+        lay.addWidget(self._new_branch)
+
+        lay.addSpacing(18)  # breathing room above the action row
+        lay.addStretch(1)
+        btns = QHBoxLayout()
+        btns.setContentsMargins(0, 0, 0, 0)
+        btns.addWidget(self._button("Back", "ghost", self._back))
+        btns.addStretch(1)
+        btns.addWidget(self._button("Commit", "primary", self._commit_branch))
+        lay.addLayout(btns)
+        return page
+
+    # ---- lifecycle ----
     def open(self):
         self.adjustSize()
+        self.setFixedHeight(self.height())  # lock size so page swaps don't jump
         geo = QGuiApplication.primaryScreen().availableGeometry()
         self.move(geo.right() - WIDTH - 24, geo.bottom() - self.height() - 24)
         self.setWindowOpacity(0.0)
         self.show()
         self.raise_()
         self.activateWindow()
-        # Park focus on the window, not an input: Qt otherwise hands it to the
-        # first field, which then sits there wearing the yellow focus ring —
-        # reads as an error state before you've typed anything.
+        # focus the window, not a field — an auto-focused empty input wears the
+        # yellow ring, which reads as an error state before you've typed.
         self.setFocus(Qt.FocusReason.OtherFocusReason)
         self._fade.stop()
         self._fade.setStartValue(0.0)
@@ -210,13 +257,37 @@ class CommitToast(QWidget):
         super().resizeEvent(event)
         self._update_bar()
 
-    # ---- countdown ----
+    # ---- page navigation ----
+    def _go_branch(self):
+        self._pause_countdown()  # actively choosing — don't auto-commit under them
+        self._stack.setCurrentIndex(1)
+        # focus whichever control is live: the combo by default (no text ring),
+        # the new-branch field if the gate is already armed.
+        if self._new_check.isChecked():
+            self._new_branch.setFocus()
+        else:
+            self._existing.setFocus()
+
+    def _back(self):
+        self._stack.setCurrentIndex(0)
+
+    def _toggle_new_branch(self, checked: bool):
+        """Mode switch between the two branch controls — only one is ever live.
+        Armed: enable + focus the new-branch field, grey the dropdown. Off:
+        return the dropdown to active (when it has branches), grey the field."""
+        self._new_branch.setEnabled(checked)
+        self._existing.setEnabled(self._has_branches and not checked)
+        if checked:
+            self._new_branch.setFocus()
+        elif self._has_branches:
+            self._existing.setFocus()
+
+    # ---- countdown (page 1) ----
     def _tick(self):
         if self._paused or self._closed:
             return
         self._remaining_ms -= 100
         if self._remaining_ms <= 0:
-            # countdown drained: auto-commit (close flow) or skip (legacy)
             if self._timeout_action == "commit":
                 self._commit()
             else:
@@ -229,63 +300,70 @@ class CommitToast(QWidget):
         self._bar.setFixedWidth(int(self.width() * frac))
 
     def _pause_countdown(self):
-        # The toast must not vanish mid-thought.
         if not self._paused:
             self._paused = True
-            self._bar.hide()
+            self._track.hide()
 
-    # ---- branch dropdown ----
+    # ---- branch loading ----
     def request_branches(self):
         """Ask the app to load this project's branches (called as the toast
-        opens, so the list is ready before the first click)."""
+        opens, so the list is ready by the time the branch page is reached)."""
         if self._on_request_branches:
             self._on_request_branches(self._flp_path)
 
-    def set_branches(self, branches: list[dict], current_branch_id: str | None = None):
-        """Fill the dropdown with the project's existing branches (id + name);
-        typing a new name still forks. Called on the main thread after the
-        async fetch. Pre-selects the file's current branch when known, so the
-        field shows where a plain Commit would land."""
-        self._branch_ids = {b["name"]: b["id"] for b in branches if b.get("name")}
-        typed = self._branch.currentText().strip()
-        self._branch.blockSignals(True)
-        self._branch.clear()
-        for name in self._branch_ids:
-            self._branch.addItem(name)
-        if typed:  # don't clobber something the user already typed
-            self._branch.setEditText(typed)
-        else:
-            preselect = next(
-                (n for n, i in self._branch_ids.items() if i == current_branch_id), "")
-            self._branch.setEditText(preselect)
-        self._branch.blockSignals(False)
+    def set_branches(self, branches: list[dict] | None,
+                     current_branch_id: str | None = None):
+        """Populate the Existing-branch dropdown. `None` = the fetch failed;
+        `[]` = the project has no branches yet. Either way the new-branch gate
+        still works. Pre-selects the file's current branch when present."""
+        self._existing.clear()
+        if not branches:  # None (fetch failed) or [] (no branches yet)
+            self._has_branches = False
+            self._existing.addItem("Couldn't load — use + New branch"
+                                   if branches is None else
+                                   "No branches yet — use + New branch")
+            self._existing.setEnabled(False)
+            # nothing to pick, so arm the new-branch gate and lock it there
+            self._new_check.setChecked(True)
+            self._new_check.setEnabled(False)
+            return
+        self._has_branches = True
+        current = 0
+        for i, b in enumerate(branches):
+            self._existing.addItem(b["name"], b["id"])
+            if b["id"] == current_branch_id:
+                current = i
+        self._existing.setCurrentIndex(current)
+        # a real list arrived: the dropdown leads unless the gate is armed
+        self._existing.setEnabled(not self._new_check.isChecked())
 
     # ---- outcomes ----
     def _commit(self):
         # new version on the branch this file is already on
         self._close_with({"name": self.entry.text().strip()})
 
-    def _commit_to_branch(self):
-        # commit onto the named branch: existing -> append (branch_id),
-        # new -> create (new_branch). A name is required.
-        value = self._branch.currentText().strip()
-        if not value:
-            self._pause_countdown()
-            self._branch.setFocus()
-            return
-        name = self.entry.text().strip()
-        bid = self._branch_ids.get(value)
-        if bid:
-            self._close_with({"name": name or value, "branch_id": bid})
+    def _commit_branch(self):
+        # the gate decides: armed -> fork a new branch, off -> the picked one
+        version = self.entry.text().strip()
+        if self._new_check.isChecked():
+            new = self._new_branch.text().strip()
+            if not new:  # nothing typed — nudge them to name it
+                self._new_branch.setFocus()
+                return
+            self._close_with({"name": version or new, "new_branch": new})
+        elif self._existing.currentData():
+            self._close_with({"name": version,
+                              "branch_id": self._existing.currentData()})
         else:
-            self._close_with({"name": name or value, "new_branch": value})
+            # no existing branch to land on — arm the gate so they can name one
+            self._new_check.setChecked(True)
 
     def _skip(self):
         self._close_with(None)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
-            self._skip()
+            self._back() if self._stack.currentIndex() == 1 else self._skip()
         else:
             super().keyPressEvent(event)
 

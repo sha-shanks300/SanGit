@@ -215,15 +215,17 @@ class App(QObject):
     # ---- branch dropdown: fetch the project's branches as the toast opens ----
     def _request_branches(self, flp_path: str):  # main thread (from the toast)
         def work():
+            current = store.file_branch_get(flp_path)  # to pre-select in the picker
             project_id = committer.read_project_id(flp_path)
             if not project_id:
+                self.branches_loaded.emit(([], current))  # never committed -> empty
                 return
             try:
                 data = self.client.list_branches(project_id)
             except ApiError:
-                return  # offline -> the dropdown stays a free-text box
-            # carry the file's home branch so the picker can pre-select it
-            self.branches_loaded.emit((data, store.file_branch_get(flp_path)))
+                self.branches_loaded.emit((None, current))  # failed -> "couldn't load"
+                return
+            self.branches_loaded.emit((data, current))
         threading.Thread(target=work, daemon=True).start()
 
     def _on_branches_loaded(self, payload: object):  # main thread
