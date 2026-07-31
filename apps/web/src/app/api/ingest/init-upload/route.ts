@@ -113,9 +113,9 @@ export async function POST(request: Request) {
     if (existing) {
       branchId = existing.id; // append onto the existing branch
     } else {
-      // Create a NEW branch that is a sibling of the base branch's current tip
-      // — i.e. it forks from the version BEFORE the tip. Base = the sent
-      // branch_id (the file's home), else the filename-derived branch.
+      // Create a NEW branch that forks from the base branch's current tip — the
+      // new take is a child of your latest save, not a sibling that orphans it.
+      // Base = the sent branch_id (the file's home), else the filename branch.
       let baseBranchId = branch_id ? await validateBranch(branch_id) : null;
       if (!baseBranchId) {
         const { data: fb } = await admin
@@ -127,15 +127,18 @@ export async function POST(request: Request) {
         baseBranchId = fb?.id ?? null;
       }
 
+      // The new version isn't inserted until step 2, so the base branch's most
+      // recent version here IS its current tip — fork from it.
       let forkVersionId: string | null = null;
       if (baseBranchId) {
-        const { data: recent } = await admin
+        const { data: tip } = await admin
           .from("versions")
           .select("id")
           .eq("branch_id", baseBranchId)
           .order("uploaded_at", { ascending: false })
-          .limit(2);
-        forkVersionId = recent?.[1]?.id ?? recent?.[0]?.id ?? null;
+          .limit(1)
+          .maybeSingle();
+        forkVersionId = tip?.id ?? null;
       }
 
       const { data: branch, error } = await admin
