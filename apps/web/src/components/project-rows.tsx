@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { ProjectsSectionHeading } from "@/components/section-heading";
+import type { PlayerTrack } from "@/components/player-context";
 
 /**
  * Live project list (SoundCloud-style rows): refetches on any Realtime change
@@ -22,7 +23,9 @@ export function ProjectRows() {
     const { data, error } = await supabase
       .from("projects")
       .select(
-        "*, versions!versions_project_id_fkey(count), branches(count), latest:versions!versions_project_id_fkey(uploaded_at)"
+        // `main:` embeds the Main version row via the *other* projects↔versions
+        // FK (projects_main_version_fk) — must be named to dodge PGRST201.
+        "*, versions!versions_project_id_fkey(count), branches(count), latest:versions!versions_project_id_fkey(uploaded_at), main:versions!projects_main_version_fk(*)"
       )
       .order("uploaded_at", { referencedTable: "latest", ascending: false })
       .limit(1, { referencedTable: "latest" })
@@ -58,6 +61,30 @@ export function ProjectRows() {
     };
   }, [supabase, refetch]);
 
+  // Dashboard playback is a playlist of Main tracks: one entry per project
+  // whose Main is rendered, in dashboard order. Next/prev hop across projects;
+  // projects without a ready Main simply have no play affordance.
+  const { queue, indexByProject } = useMemo(() => {
+    const q: PlayerTrack[] = [];
+    const byId = new Map<string, number>();
+    for (const p of projects ?? []) {
+      if (p.main && p.main.render_status === "ready") {
+        byId.set(p.id, q.length);
+        q.push({
+          version: p.main,
+          meta: {
+            projectId: p.id,
+            projectTitle: p.title,
+            artworkUrl: p.artwork_url,
+            isOwner: true,
+            mainVersionId: p.main_version_id,
+          },
+        });
+      }
+    }
+    return { queue: q, indexByProject: byId };
+  }, [projects]);
+
   if (projects === null) {
     return (
       <section className="mt-12">
@@ -84,6 +111,8 @@ export function ProjectRows() {
             key={p.id}
             project={p}
             href={`/dashboard/projects/${p.id}`}
+            playQueue={queue}
+            playIndex={indexByProject.get(p.id) ?? -1}
           />
         ))}
       </div>

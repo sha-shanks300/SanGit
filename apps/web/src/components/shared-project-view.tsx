@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Branch, Version } from "@/lib/database.types";
 import { TimelineTree } from "@/components/timeline-tree";
 import { VersionGraph } from "@/components/version-graph";
-import { PlayerBar } from "@/components/player";
+import { usePlayer, type PlayerTrack } from "@/components/player-context";
 import { VersionPanel } from "@/components/version-panel";
 import { Interactions, type InteractionsApi } from "@/components/interactions";
 import { SignInPrompt } from "@/components/signin-prompt";
@@ -46,6 +46,7 @@ export function SharedProjectView({
 }) {
   const { project, branches, versions } = payload;
   const showHistory = payload.show_history !== false; // legacy payloads = full
+  const player = usePlayer();
   const [selected, setSelected] = useState<Version | null>(
     () =>
       versions.find((v) => v.id === project.main_version_id) ??
@@ -84,6 +85,46 @@ export function SharedProjectView({
 
   const ownerName =
     project.owner?.display_name || project.owner?.username || null;
+
+  // Token-scoped player queue: audio + likes route through the share token;
+  // no owner management, no project favourite (there's no token route for it).
+  const queue = useMemo<PlayerTrack[]>(
+    () =>
+      versions.map((v) => ({
+        version: v,
+        meta: {
+          projectId: project.id,
+          projectTitle: project.title,
+          artworkUrl: project.artwork_url,
+          isOwner: false,
+          mainVersionId: project.main_version_id,
+          branchName: branches.find((b) => b.id === v.branch_id)?.name ?? null,
+          interactionsApi: tokenApi,
+          audioUrlFor: (id: string) => `/api/listen/${token}/audio/${id}`,
+        },
+      })),
+    [versions, branches, project, tokenApi, token]
+  );
+
+  const { syncQueue, cue } = player;
+  useEffect(() => {
+    syncQueue(queue);
+  }, [queue, syncQueue]);
+  useEffect(() => {
+    // Cue Main (or the latest ready take) on load — no autoplay.
+    const idx = queue.findIndex((t) => t.version.id === selected?.id);
+    if (idx >= 0) cue(queue, idx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial cue only
+  }, [queue, cue]);
+
+  const selectAndPlay = useCallback(
+    (v: Version) => {
+      setSelected(v);
+      const i = queue.findIndex((t) => t.version.id === v.id);
+      if (i >= 0) player.play(queue, i);
+    },
+    [queue, player]
+  );
 
   return (
     <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10 pb-28">
@@ -144,7 +185,7 @@ export function SharedProjectView({
               versions={versions}
               mainVersionId={project.main_version_id}
               selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              onSelect={selectAndPlay}
             />
           ) : (
             <TimelineTree
@@ -152,7 +193,7 @@ export function SharedProjectView({
               versions={versions}
               mainVersionId={project.main_version_id}
               selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              onSelect={selectAndPlay}
             />
           )}
         </Panel>
@@ -174,21 +215,6 @@ export function SharedProjectView({
           />
         </div>
       )}
-
-      <PlayerBar
-        version={selected}
-        versions={versions}
-        isOwner={false}
-        mainVersionId={project.main_version_id}
-        onSelect={setSelected}
-        audioUrlFor={(id) => `/api/listen/${token}/audio/${id}`}
-        artwork={{
-          projectId: project.id,
-          title: project.title,
-          artworkUrl: project.artwork_url,
-        }}
-        interactionsApi={tokenApi}
-      />
 
       <SignInPrompt next={`/s/${token}`} />
     </main>

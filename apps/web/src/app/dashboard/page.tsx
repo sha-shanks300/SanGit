@@ -14,7 +14,7 @@ export default async function DashboardPage() {
     : { data: null };
 
   return (
-    <div>
+    <div className="pb-28">
       {profile ? (
         <ProfileHeader profile={profile} isOwner />
       ) : (
