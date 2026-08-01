@@ -15,6 +15,7 @@ export function BranchActionsMenu({
   x,
   y,
   isMain,
+  canDelete,
   onSetMain,
   onDelete,
   onClose,
@@ -22,6 +23,7 @@ export function BranchActionsMenu({
   x: number;
   y: number;
   isMain: boolean;
+  canDelete: boolean;
   onSetMain: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -71,17 +73,19 @@ export function BranchActionsMenu({
           Set as Main
         </button>
       )}
-      <button
-        type="button"
-        role="menuitem"
-        className="block w-full cursor-pointer px-4 py-2 text-left text-body-sm text-primary transition-colors hover:bg-surface-2"
-        onClick={() => {
-          onDelete();
-          onClose();
-        }}
-      >
-        Delete branch…
-      </button>
+      {canDelete && (
+        <button
+          type="button"
+          role="menuitem"
+          className="block w-full cursor-pointer px-4 py-2 text-left text-body-sm text-primary transition-colors hover:bg-surface-2"
+          onClick={() => {
+            onDelete();
+            onClose();
+          }}
+        >
+          Delete branch…
+        </button>
+      )}
     </div>
   );
 }
