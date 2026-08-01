@@ -253,10 +253,13 @@ export function TimelineTree({
         style={{ height: layout.height, width: 132 }}
       >
         {layout.lanes.map(({ branch, y }, i) => {
-          // The trunk (no parent) shows as "main"; forks keep their real name.
+          // The trunk (no parent) shows as "default" — a neutral origin label,
+          // kept distinct from the Main *version* star. Forks keep their name.
           const isRoot = branch.parent_branch_id === null;
-          const displayName = isRoot ? "main" : branch.name;
-          const clickable = !isRoot && Boolean(onBranchLabelClick);
+          const displayName = isRoot ? "default" : branch.name;
+          // every lane is clickable for owners now (the trunk too — you can
+          // Set as Main onto it); the menu itself hides Delete for the trunk.
+          const clickable = Boolean(onBranchLabelClick);
           return (
             <div
               key={branch.id}
@@ -274,7 +277,7 @@ export function TimelineTree({
               )}
               style={{ top: y - 9 }}
               title={
-                clickable ? `${branch.name} — branch actions` : branch.name
+                clickable ? `${displayName} — branch actions` : displayName
               }
             >
               {/* dot column reserved on every lane so names left-align; only the
