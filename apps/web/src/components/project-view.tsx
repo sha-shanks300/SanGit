@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/lib/use-project";
 import { uploadPublicImage } from "@/lib/image-upload";
@@ -9,7 +9,7 @@ import { ProjectArtwork } from "@/components/project-artwork";
 import { TimelineTree } from "@/components/timeline-tree";
 import { VersionGraph } from "@/components/version-graph";
 import { cn } from "@/lib/utils";
-import { PlayerBar } from "@/components/player";
+import { usePlayer, type PlayerTrack } from "@/components/player-context";
 import { VersionPanel } from "@/components/version-panel";
 import { VersionContextMenu } from "@/components/version-context-menu";
 import { ShareVersionDialog } from "@/components/share-version-dialog";
@@ -38,6 +38,7 @@ export function ProjectView({
 }) {
   const { project, branches, versions, loading, refetch } =
     useProject(projectId);
+  const player = usePlayer();
   const [selected, setSelected] = useState<Version | null>(null);
   const [view, setView] = useState<"tree" | "graph">("tree");
   const [menu, setMenu] = useState<{ version: Version; x: number; y: number } | null>(
@@ -74,14 +75,61 @@ export function ProjectView({
     if (main) setSelected(main);
   }
 
-  async function setMain(v: Version) {
-    const supabase = createClient();
-    await supabase
-      .from("projects")
-      .update({ main_version_id: v.id })
-      .eq("id", projectId);
-    refetch();
-  }
+  const setMain = useCallback(
+    async (v: Version) => {
+      const supabase = createClient();
+      await supabase
+        .from("projects")
+        .update({ main_version_id: v.id })
+        .eq("id", projectId);
+      refetch();
+    },
+    [projectId, refetch]
+  );
+
+  // The player queue for this project: every version in chronological order,
+  // each carrying its branch name + the owner/listener meta. Fed to the shared
+  // <PlayerProvider> so playback survives navigation to/from the dashboard.
+  const mainVersionId = project?.main_version_id ?? null;
+  const projectQueue = useMemo<PlayerTrack[]>(() => {
+    if (!project) return [];
+    return versions.map((v) => ({
+      version: v,
+      meta: {
+        projectId: project.id,
+        projectTitle: project.title,
+        artworkUrl: project.artwork_url,
+        isOwner,
+        mainVersionId,
+        branchName: branches.find((b) => b.id === v.branch_id)?.name ?? null,
+        onSetMain: isOwner ? setMain : undefined,
+        favoriteProjectId: isOwner ? undefined : project.id,
+      },
+    }));
+  }, [project, versions, branches, isOwner, mainVersionId, setMain]);
+
+  // Keep the live queue fresh (Set-as-Main, a render finishing) without
+  // restarting audio; only re-homes prev/next if this project owns the
+  // playing track. Separately, cue the Main version on a fresh visit — a
+  // no-op if something is already playing (e.g. carried in from the dashboard).
+  const { syncQueue, cue } = player;
+  useEffect(() => {
+    syncQueue(projectQueue);
+  }, [projectQueue, syncQueue]);
+  useEffect(() => {
+    const mainIdx = projectQueue.findIndex((t) => t.version.id === mainVersionId);
+    if (mainIdx >= 0) cue(projectQueue, mainIdx);
+  }, [projectQueue, mainVersionId, cue]);
+
+  /** Tree/graph node click: reflect it in the detail panels and start playing. */
+  const selectAndPlay = useCallback(
+    (v: Version) => {
+      setSelected(v);
+      const i = projectQueue.findIndex((t) => t.version.id === v.id);
+      if (i >= 0) player.play(projectQueue, i);
+    },
+    [projectQueue, player]
+  );
 
   /** After a delete, move selection to the chronologically previous version
    *  (versions arrive sorted by uploaded_at), falling back forward, then none. */
@@ -208,7 +256,7 @@ export function ProjectView({
             versions={versions}
             mainVersionId={project.main_version_id}
             selectedId={selected?.id ?? null}
-            onSelect={setSelected}
+            onSelect={selectAndPlay}
             onNodeContextMenu={
               isOwner ? (v, x, y) => setMenu({ version: v, x, y }) : undefined
             }
@@ -219,7 +267,7 @@ export function ProjectView({
             versions={versions}
             mainVersionId={project.main_version_id}
             selectedId={selected?.id ?? null}
-            onSelect={setSelected}
+            onSelect={selectAndPlay}
             onNodeContextMenu={
               isOwner ? (v, x, y) => setMenu({ version: v, x, y }) : undefined
             }
@@ -306,20 +354,6 @@ export function ProjectView({
         </div>
       )}
 
-      <PlayerBar
-        version={selected}
-        versions={versions}
-        isOwner={isOwner}
-        mainVersionId={project.main_version_id}
-        onSelect={setSelected}
-        onSetMain={isOwner ? setMain : undefined}
-        favoriteProjectId={isOwner ? undefined : project.id}
-        artwork={{
-          projectId: project.id,
-          title: project.title,
-          artworkUrl: project.artwork_url,
-        }}
-      />
     </div>
   );
 }
