@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Version } from "@/lib/database.types";
 import { Button, StatusBadge } from "@/components/ui";
 import { ProjectArtwork } from "@/components/project-artwork";
 import { FavoriteButton } from "@/components/favorite-button";
@@ -9,57 +8,25 @@ import {
   defaultInteractionsApi,
   type InteractionsApi,
 } from "@/components/interactions";
+import {
+  usePlayer,
+  usePlayerProgress,
+  type PlayerTrack,
+} from "@/components/player-context";
 import { cn, formatDuration } from "@/lib/utils";
 
-export type PlayerArtwork = {
-  projectId: string;
-  title: string;
-  artworkUrl: string | null;
-};
-
 /**
- * Persistent bottom player. Streams short-lived signed URLs (refetched on
- * playback error when they expire). prev/next walk the chronological order
- * of the current branch lane, falling back across the whole project.
+ * Persistent bottom player — pure presentation over the {@link usePlayer}
+ * context (all audio/transport/queue state lives in <PlayerProvider>). Renders
+ * nothing until a track is loaded.
  *
- * Desktop (`sm:`+) renders the full-width bar; below that a Spotify-style
- * mini-bar that expands into a full-screen now-playing sheet (chevron or
- * swipe-down to close). The single <audio> element lives outside both, so
- * expanding/collapsing never interrupts playback.
+ * Desktop (`sm:`+) is the full bar (transport, artwork, seek, loop, volume,
+ * audience actions); below that a Spotify-style mini-bar that expands into a
+ * full-screen now-playing sheet (chevron or swipe-down to close).
  */
-export function PlayerBar({
-  version,
-  versions,
-  isOwner,
-  mainVersionId,
-  onSelect,
-  onSetMain,
-  audioUrlFor = (id: string) => `/api/audio/${id}`,
-  extraControls,
-  artwork,
-  interactionsApi = defaultInteractionsApi,
-  favoriteProjectId,
-}: {
-  version: Version | null;
-  versions: Version[];
-  isOwner: boolean;
-  mainVersionId: string | null;
-  onSelect: (v: Version) => void;
-  onSetMain?: (v: Version) => void;
-  audioUrlFor?: (id: string) => string;
-  extraControls?: React.ReactNode;
-  artwork?: PlayerArtwork;
-  /** Like backend for the now-playing sheet (token routes on share pages). */
-  interactionsApi?: InteractionsApi;
-  /** Visitor star on the sheet favorites this project (RLS path — omit on
-   *  token share pages, where favorites have no token route). */
-  favoriteProjectId?: string;
-}) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [time, setTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const retriedRef = useRef(false);
+export function PlayerBar() {
+  const player = usePlayer();
+  const { time, duration } = usePlayerProgress();
   const [expanded, setExpanded] = useState(false);
   // Swipe-down dismissal: the sheet tracks the drag offset and either closes
   // past the threshold or springs back. `dragging` (state, not the ref —
@@ -68,67 +35,25 @@ export function PlayerBar({
   const [dragging, setDragging] = useState(false);
   const dragStartRef = useRef<number | null>(null);
 
-  const playable = version?.render_status === "ready";
-
-  const loadAndPlay = useCallback(
-    async (autoplay: boolean) => {
-      const audio = audioRef.current;
-      if (!audio || !version || version.render_status !== "ready") return;
-      try {
-        const res = await fetch(audioUrlFor(version.id));
-        if (!res.ok) return;
-        const { url } = await res.json();
-        audio.src = url;
-        if (autoplay) await audio.play();
-      } catch {
-        /* leave the bar idle on failure */
-      }
-    },
-    [version, audioUrlFor]
-  );
-
-  // Reset transport state when the track changes (adjust-during-render).
-  const [prevVersionId, setPrevVersionId] = useState(version?.id ?? null);
-  if (prevVersionId !== (version?.id ?? null)) {
-    setPrevVersionId(version?.id ?? null);
-    setTime(0);
-    setDuration(version?.duration_secs ?? 0);
-  }
+  const track = player.current;
   // The sheet has nothing to show without a track.
-  if (!version && expanded) setExpanded(false);
+  if (!track && expanded) setExpanded(false);
+  if (!track) return null;
 
-  useEffect(() => {
-    retriedRef.current = false;
-    if (version) loadAndPlay(true);
-    else if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute("src");
-    }
-  }, [version?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Walk order: current branch lane first, whole project as fallback.
-  const order = version
-    ? versions.filter((v) => v.branch_id === version.branch_id)
-    : versions;
-  const idx = version ? order.findIndex((v) => v.id === version.id) : -1;
-  const prev = idx > 0 ? order[idx - 1] : null;
-  const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
-
-  function togglePlay() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (playing) audio.pause();
-    else if (audio.src) audio.play().catch(() => loadAndPlay(true));
-    else loadAndPlay(true);
-  }
+  const { version, meta } = track;
+  const playable = version.render_status === "ready";
+  const { playing, buffering } = player;
+  const api = meta.interactionsApi ?? defaultInteractionsApi;
+  const artwork = {
+    projectId: meta.projectId,
+    title: meta.projectTitle,
+    artworkUrl: meta.artworkUrl,
+  };
 
   function seek(e: React.ChangeEvent<HTMLInputElement>) {
-    const audio = audioRef.current;
-    if (!audio || !duration) return;
-    const t = (Number(e.target.value) / 1000) * duration;
-    audio.currentTime = t;
-    setTime(t);
+    player.seekTo(Number(e.target.value) / 1000);
   }
+  const seekValue = duration ? Math.round((time / duration) * 1000) : 0;
 
   // Swipe-down on the sheet's non-interactive surface. Interactive children
   // (seek slider, buttons) keep their own touch behavior.
@@ -149,196 +74,159 @@ export function PlayerBar({
     setDragY(0);
   }
 
+  const statusBadge =
+    version.render_status === "pending" || version.render_status === "rendering" ? (
+      <StatusBadge tone="processing">processing</StatusBadge>
+    ) : version.render_status === "failed" ? (
+      <StatusBadge>render failed</StatusBadge>
+    ) : null;
+
   return (
     <>
-    {/* The sheet must NOT live inside this bar: backdrop-blur makes the bar
-        a containing block for fixed descendants, which would trap the
-        "inset-0" overlay inside the 72px strip. */}
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-hairline bg-surface-1/95 backdrop-blur">
-      <audio
-        ref={audioRef}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-        onDurationChange={(e) => setDuration(e.currentTarget.duration)}
-        onEnded={() => next && onSelect(next)}
-        onError={() => {
-          // Signed URL likely expired — refresh it once.
-          if (!retriedRef.current && version) {
-            retriedRef.current = true;
-            loadAndPlay(playing);
-          }
-        }}
-      />
-      <div className="mx-auto hidden h-[72px] max-w-[1280px] items-center gap-4 px-6 sm:flex">
-        {/* transport */}
-        <div className="flex items-center gap-1">
-          <button
-            className="rounded-md p-2 text-ink-subtle hover:text-ink disabled:opacity-40"
-            onClick={() => prev && onSelect(prev)}
-            disabled={!prev}
-            aria-label="Previous version"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M4 2h2v12H4zM13 2v12L6.5 8z" />
-            </svg>
-          </button>
-          <button
-            className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-full",
-              playable
-                ? "bg-primary text-white hover:bg-primary-hover"
-                : "bg-surface-3 text-ink-tertiary"
-            )}
-            onClick={togglePlay}
-            disabled={!playable}
-            aria-label={playing ? "Pause" : "Play"}
-          >
-            {playing ? (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <path d="M2 1h4v12H2zM8 1h4v12H8z" />
+      {/* The sheet must NOT live inside this bar: backdrop-blur makes the bar
+          a containing block for fixed descendants, which would trap the
+          "inset-0" overlay inside the strip. */}
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-hairline bg-surface-1/95 backdrop-blur">
+        <div className="mx-auto hidden h-[72px] max-w-[1280px] items-center gap-4 px-6 sm:flex">
+          {/* transport */}
+          <div className="flex items-center gap-1">
+            <button
+              className="rounded-md p-2 text-ink-subtle hover:text-ink disabled:opacity-40"
+              onClick={player.prev}
+              disabled={!player.hasPrev}
+              aria-label="Previous"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M4 2h2v12H4zM13 2v12L6.5 8z" />
               </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <path d="M3 1l10 6-10 6z" />
+            </button>
+            <PlayToggle
+              playing={playing}
+              buffering={buffering}
+              playable={playable}
+              onClick={player.toggle}
+              size="md"
+            />
+            <button
+              className="rounded-md p-2 text-ink-subtle hover:text-ink disabled:opacity-40"
+              onClick={player.next}
+              disabled={!player.hasNext}
+              aria-label="Next"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M10 2h2v12h-2zM3 2v12l6.5-6z" />
               </svg>
-            )}
-          </button>
-          <button
-            className="rounded-md p-2 text-ink-subtle hover:text-ink disabled:opacity-40"
-            onClick={() => next && onSelect(next)}
-            disabled={!next}
-            aria-label="Next version"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M10 2h2v12h-2zM3 2v12l6.5-6z" />
-            </svg>
-          </button>
-        </div>
+            </button>
+          </div>
 
-        {/* track info + seek */}
-        <div className="min-w-0 flex-1">
-          {version ? (
-            <>
-              <div className="flex items-center gap-2">
-                <p className="truncate text-body-sm text-ink">
-                  {version.display_name || version.file_name}
-                </p>
-                {version.id === mainVersionId && (
-                  <StatusBadge tone="accent">Main</StatusBadge>
-                )}
-                {version.render_status === "pending" ||
-                version.render_status === "rendering" ? (
-                  <StatusBadge tone="processing">processing</StatusBadge>
-                ) : version.render_status === "failed" ? (
-                  <StatusBadge>render failed</StatusBadge>
-                ) : null}
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="w-10 text-right font-mono text-mono text-ink-tertiary">
-                  {formatDuration(time)}
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1000}
-                  value={duration ? Math.round((time / duration) * 1000) : 0}
-                  onChange={seek}
-                  disabled={!playable}
-                  className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary)"
-                  aria-label="Seek"
-                />
-                <span className="w-10 font-mono text-mono text-ink-tertiary">
-                  {formatDuration(duration)}
-                </span>
-              </div>
-            </>
-          ) : (
-            <p className="text-body-sm text-ink-tertiary">
-              Select a version node to play it.
-            </p>
-          )}
-        </div>
-
-        {/* actions */}
-        <div className="flex items-center gap-2">
-          {extraControls}
-          {isOwner && version && onSetMain && version.id !== mainVersionId && (
-            <Button variant="secondary" onClick={() => onSetMain(version)}>
-              Set as Main
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile mini-bar — tap to expand into the now-playing sheet. */}
-      <div
-        className="relative flex h-14 items-center gap-3 px-4 sm:hidden"
-        onClick={() => version && setExpanded(true)}
-        role={version ? "button" : undefined}
-        aria-label={version ? "Open now playing" : undefined}
-      >
-        <div className="absolute inset-x-0 top-0 h-0.5 bg-surface-3">
-          <div
-            className="h-full bg-primary"
-            style={{ width: duration ? `${(time / duration) * 100}%` : 0 }}
+          {/* artwork */}
+          <ProjectArtwork
+            projectId={artwork.projectId}
+            artworkUrl={artwork.artworkUrl}
+            title={artwork.title}
+            className="h-12 w-12 shrink-0 border border-hairline"
+            initialClassName="text-body-sm"
           />
-        </div>
-        {version ? (
-          <>
-            {artwork && (
-              <ProjectArtwork
-                projectId={artwork.projectId}
-                artworkUrl={artwork.artworkUrl}
-                title={artwork.title}
-                className="h-10 w-10 shrink-0 border border-hairline"
-                initialClassName="text-body-sm"
-              />
-            )}
-            <div className="min-w-0 flex-1">
+
+          {/* track info + seek */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
               <p className="truncate text-body-sm text-ink">
                 {version.display_name || version.file_name}
               </p>
-              <p className="font-mono text-caption text-ink-tertiary">
-                {formatDuration(time)} / {formatDuration(duration)}
-              </p>
+              {version.id === meta.mainVersionId && (
+                <StatusBadge tone="accent">Main</StatusBadge>
+              )}
+              {statusBadge}
             </div>
-            <button
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                playable
-                  ? "bg-primary text-white"
-                  : "bg-surface-3 text-ink-tertiary"
+            <p className="truncate font-mono text-caption text-ink-tertiary">
+              {meta.projectTitle}
+              {meta.branchName ? ` · ${meta.branchName}` : ""}
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="w-10 text-right font-mono text-mono text-ink-tertiary">
+                {formatDuration(time)}
+              </span>
+              <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
+              <span className="w-10 font-mono text-mono text-ink-tertiary">
+                {formatDuration(duration)}
+              </span>
+            </div>
+          </div>
+
+          {/* enjoyment: loop + volume */}
+          <LoopButton on={player.loop} onClick={player.toggleLoop} />
+          <VolumeControl
+            volume={player.volume}
+            muted={player.muted}
+            onVolume={player.setVolume}
+            onToggleMute={player.toggleMute}
+          />
+
+          {/* audience actions: owner management vs. listener social */}
+          <div className="flex items-center gap-1">
+            {meta.isOwner
+              ? meta.onSetMain &&
+                version.id !== meta.mainVersionId && (
+                  <Button variant="secondary" onClick={() => meta.onSetMain!(version)}>
+                    Set as Main
+                  </Button>
+                )
+              : (
+                <>
+                  <LikeHeart versionId={version.id} api={api} />
+                  {meta.favoriteProjectId && (
+                    <FavoriteButton projectId={meta.favoriteProjectId} bare />
+                  )}
+                </>
               )}
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePlay();
-              }}
-              disabled={!playable}
-              aria-label={playing ? "Pause" : "Play"}
-            >
-              {playing ? (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                  <path d="M2 1h4v12H2zM8 1h4v12H8z" />
-                </svg>
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                  <path d="M3 1l10 6-10 6z" />
-                </svg>
-              )}
-            </button>
-          </>
-        ) : (
-          <p className="text-body-sm text-ink-tertiary">
-            Select a version node to play it.
-          </p>
-        )}
+          </div>
+        </div>
+
+        {/* Mobile mini-bar — tap to expand into the now-playing sheet. */}
+        <div
+          className="relative flex h-14 items-center gap-3 px-4 sm:hidden"
+          onClick={() => setExpanded(true)}
+          role="button"
+          aria-label="Open now playing"
+        >
+          <div className="absolute inset-x-0 top-0 h-0.5 bg-surface-3">
+            <div
+              className="h-full bg-primary"
+              style={{ width: duration ? `${(time / duration) * 100}%` : 0 }}
+            />
+          </div>
+          <ProjectArtwork
+            projectId={artwork.projectId}
+            artworkUrl={artwork.artworkUrl}
+            title={artwork.title}
+            className="h-10 w-10 shrink-0 border border-hairline"
+            initialClassName="text-body-sm"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-body-sm text-ink">
+              {version.display_name || version.file_name}
+            </p>
+            <p className="font-mono text-caption text-ink-tertiary">
+              {formatDuration(time)} / {formatDuration(duration)}
+            </p>
+          </div>
+          <PlayToggle
+            playing={playing}
+            buffering={buffering}
+            playable={playable}
+            onClick={(e) => {
+              e.stopPropagation();
+              player.toggle();
+            }}
+            size="sm"
+          />
+        </div>
       </div>
-    </div>
 
       {/* Full-screen now-playing sheet (mobile only) — sibling of the bar,
           see the containing-block note above. */}
-      {expanded && version && (
+      {expanded && (
         <div
           className={cn(
             "fixed inset-0 z-[60] flex flex-col bg-canvas px-6 pb-10 sm:hidden",
@@ -363,15 +251,13 @@ export function PlayerBar({
           </button>
 
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8">
-            {artwork && (
-              <ProjectArtwork
-                projectId={artwork.projectId}
-                artworkUrl={artwork.artworkUrl}
-                title={artwork.title}
-                className="aspect-square w-full max-w-[320px] border border-hairline"
-                initialClassName="text-display-md"
-              />
-            )}
+            <ProjectArtwork
+              projectId={artwork.projectId}
+              artworkUrl={artwork.artworkUrl}
+              title={artwork.title}
+              className="aspect-square w-full max-w-[320px] border border-hairline"
+              initialClassName="text-display-md"
+            />
 
             <div className="w-full max-w-[400px]">
               {/* Anchored title row: track info left, borderless actions
@@ -381,30 +267,23 @@ export function PlayerBar({
                   <p className="truncate text-card-title text-ink">
                     {version.display_name || version.file_name}
                   </p>
-                  {version.id === mainVersionId && (
+                  {version.id === meta.mainVersionId && (
                     <StatusBadge tone="accent" className="shrink-0">
                       Main
                     </StatusBadge>
                   )}
-                  {version.render_status === "pending" ||
-                  version.render_status === "rendering" ? (
-                    <StatusBadge tone="processing" className="shrink-0">
-                      processing
-                    </StatusBadge>
-                  ) : version.render_status === "failed" ? (
-                    <StatusBadge className="shrink-0">render failed</StatusBadge>
-                  ) : null}
+                  {statusBadge && <span className="shrink-0">{statusBadge}</span>}
                 </div>
                 <div className="flex shrink-0 items-center">
-                  <LikeHeart versionId={version.id} api={interactionsApi} />
-                  {isOwner && onSetMain ? (
+                  <LikeHeart versionId={version.id} api={api} />
+                  {meta.isOwner && meta.onSetMain ? (
                     <MainToggle
                       version={version}
-                      mainVersionId={mainVersionId}
-                      onSetMain={onSetMain}
+                      mainVersionId={meta.mainVersionId}
+                      onSetMain={meta.onSetMain}
                     />
-                  ) : favoriteProjectId ? (
-                    <FavoriteButton projectId={favoriteProjectId} bare />
+                  ) : meta.favoriteProjectId ? (
+                    <FavoriteButton projectId={meta.favoriteProjectId} bare />
                   ) : null}
                 </div>
               </div>
@@ -413,16 +292,7 @@ export function PlayerBar({
                 <span className="w-10 text-right font-mono text-mono text-ink-tertiary">
                   {formatDuration(time)}
                 </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1000}
-                  value={duration ? Math.round((time / duration) * 1000) : 0}
-                  onChange={seek}
-                  disabled={!playable}
-                  className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary)"
-                  aria-label="Seek"
-                />
+                <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
                 <span className="w-10 font-mono text-mono text-ink-tertiary">
                   {formatDuration(duration)}
                 </span>
@@ -431,40 +301,26 @@ export function PlayerBar({
               <div className="mt-6 flex items-center justify-center gap-6">
                 <button
                   className="p-3 text-ink-subtle disabled:opacity-40"
-                  onClick={() => prev && onSelect(prev)}
-                  disabled={!prev}
-                  aria-label="Previous version"
+                  onClick={player.prev}
+                  disabled={!player.hasPrev}
+                  aria-label="Previous"
                 >
                   <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M4 2h2v12H4zM13 2v12L6.5 8z" />
                   </svg>
                 </button>
-                <button
-                  className={cn(
-                    "flex h-14 w-14 items-center justify-center rounded-full",
-                    playable
-                      ? "bg-primary text-white"
-                      : "bg-surface-3 text-ink-tertiary"
-                  )}
-                  onClick={togglePlay}
-                  disabled={!playable}
-                  aria-label={playing ? "Pause" : "Play"}
-                >
-                  {playing ? (
-                    <svg width="18" height="18" viewBox="0 0 14 14" fill="currentColor">
-                      <path d="M2 1h4v12H2zM8 1h4v12H8z" />
-                    </svg>
-                  ) : (
-                    <svg width="18" height="18" viewBox="0 0 14 14" fill="currentColor">
-                      <path d="M3 1l10 6-10 6z" />
-                    </svg>
-                  )}
-                </button>
+                <PlayToggle
+                  playing={playing}
+                  buffering={buffering}
+                  playable={playable}
+                  onClick={player.toggle}
+                  size="lg"
+                />
                 <button
                   className="p-3 text-ink-subtle disabled:opacity-40"
-                  onClick={() => next && onSelect(next)}
-                  disabled={!next}
-                  aria-label="Next version"
+                  onClick={player.next}
+                  disabled={!player.hasNext}
+                  aria-label="Next"
                 >
                   <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor">
                     <path d="M10 2h2v12h-2zM3 2v12l6.5-6z" />
@@ -472,6 +328,9 @@ export function PlayerBar({
                 </button>
               </div>
 
+              <div className="mt-6 flex items-center justify-center">
+                <LoopButton on={player.loop} onClick={player.toggleLoop} />
+              </div>
             </div>
           </div>
         </div>
@@ -480,9 +339,148 @@ export function PlayerBar({
   );
 }
 
+/** Play/pause circle with a buffering spinner. Rosso when playable. */
+function PlayToggle({
+  playing,
+  buffering,
+  playable,
+  onClick,
+  size,
+}: {
+  playing: boolean;
+  buffering: boolean;
+  playable: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  size: "sm" | "md" | "lg";
+}) {
+  const box = size === "lg" ? "h-14 w-14" : size === "md" ? "h-10 w-10" : "h-10 w-10";
+  const icon = size === "lg" ? 18 : 14;
+  return (
+    <button
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full",
+        box,
+        playable ? "bg-primary text-white hover:bg-primary-hover" : "bg-surface-3 text-ink-tertiary"
+      )}
+      onClick={onClick}
+      disabled={!playable}
+      aria-label={playing ? "Pause" : "Play"}
+    >
+      {buffering ? (
+        <svg className="animate-spin" width={icon} height={icon} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      ) : playing ? (
+        <svg width={icon} height={icon} viewBox="0 0 14 14" fill="currentColor">
+          <path d="M2 1h4v12H2zM8 1h4v12H8z" />
+        </svg>
+      ) : (
+        <svg width={icon} height={icon} viewBox="0 0 14 14" fill="currentColor">
+          <path d="M3 1l10 6-10 6z" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/** Shared seek range — sharp track, Rosso fill, yellow focus ring. */
+function SeekSlider({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  disabled: boolean;
+}) {
+  return (
+    <input
+      type="range"
+      min={0}
+      max={1000}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+      aria-label="Seek"
+    />
+  );
+}
+
+/** Repeat-one toggle — tinted Rosso when on. */
+function LoopButton({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      aria-label={on ? "Repeat on" : "Repeat off"}
+      title="Repeat one"
+      className={cn(
+        "rounded-md p-2 transition-colors",
+        on ? "text-primary" : "text-ink-subtle hover:text-ink"
+      )}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+        <path d="M4 3h6a3 3 0 0 1 3 3v1M12 13H6a3 3 0 0 1-3-3V9" strokeLinecap="round" />
+        <path d="M11 1.5 13 3l-2 1.5M5 14.5 3 13l2-1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
+
+/** Mute button + level slider (desktop only). */
+function VolumeControl({
+  volume,
+  muted,
+  onVolume,
+  onToggleMute,
+}: {
+  volume: number;
+  muted: boolean;
+  onVolume: (v: number) => void;
+  onToggleMute: () => void;
+}) {
+  const level = muted ? 0 : volume;
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        onClick={onToggleMute}
+        aria-label={muted ? "Unmute" : "Mute"}
+        title={muted ? "Unmute" : "Mute"}
+        className="rounded-md p-2 text-ink-subtle transition-colors hover:text-ink"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M3 6h2.5L9 3v10L5.5 10H3z" />
+          {level === 0 ? (
+            <path d="M11 6l3 3M14 6l-3 3" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+          ) : (
+            <path
+              d={level < 0.5 ? "M11 6a3 3 0 0 1 0 4" : "M11 5a4.5 4.5 0 0 1 0 6M11 6a3 3 0 0 1 0 4"}
+              stroke="currentColor"
+              strokeWidth="1.2"
+              fill="none"
+              strokeLinecap="round"
+            />
+          )}
+        </svg>
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={Math.round(level * 100)}
+        onChange={(e) => onVolume(Number(e.target.value) / 100)}
+        className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+        aria-label="Volume"
+      />
+    </div>
+  );
+}
+
 /**
- * Heart-like for the now-playing sheet — same snapshot/toggle plumbing as
- * the Interactions panel (sign-in required; disabled for anonymous viewers).
+ * Heart-like — same snapshot/toggle plumbing as the Interactions panel
+ * (sign-in required; disabled for anonymous viewers).
  */
 function LikeHeart({
   versionId,
@@ -541,18 +539,17 @@ function LikeHeart({
 
 /**
  * Owner-only Main toggle for the sheet's action row: ring/target icon echoing
- * the tree's Main halo. Always visible; selected (filled, Rosso red) when the
- * playing version is already Main — tapping then is a no-op, so the state
- * can't be un-set from here.
+ * the tree's Main halo. Selected (filled, Rosso) when the playing version is
+ * already Main — tapping then is a no-op.
  */
 function MainToggle({
   version,
   mainVersionId,
   onSetMain,
 }: {
-  version: Version;
+  version: PlayerTrack["version"];
   mainVersionId: string | null;
-  onSetMain: (v: Version) => void;
+  onSetMain: (v: PlayerTrack["version"]) => void;
 }) {
   const isMain = version.id === mainVersionId;
   return (
@@ -560,19 +557,9 @@ function MainToggle({
       onClick={() => !isMain && onSetMain(version)}
       aria-pressed={isMain}
       aria-label={isMain ? "Current Main version" : "Set as Main"}
-      className={cn(
-        "p-2 transition-colors",
-        isMain ? "text-primary" : "text-ink-subtle"
-      )}
+      className={cn("p-2 transition-colors", isMain ? "text-primary" : "text-ink-subtle")}
     >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 18 18"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      >
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5">
         <circle cx="9" cy="9" r="6.5" />
         <circle cx="9" cy="9" r="2.5" fill={isMain ? "currentColor" : "none"} />
       </svg>

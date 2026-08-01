@@ -9,6 +9,7 @@ import {
   SharedProjectView,
   type SharedProjectPayload,
 } from "@/components/shared-project-view";
+import { PlayerProvider } from "@/components/player-provider";
 
 type Payload =
   | ({ scope: "version" } & SharedVersionPayload)
@@ -63,7 +64,9 @@ export default function SharePage({
   }
 
   return data.scope === "project" ? (
-    <SharedProjectView token={token} payload={data} />
+    <PlayerProvider>
+      <SharedProjectView token={token} payload={data} />
+    </PlayerProvider>
   ) : (
     <SharedVersionPlayer token={token} data={data} />
   );
