@@ -37,7 +37,10 @@ export function buildGraph(
   versions: Version[],
   mainVersionId: string | null
 ): { nodes: GraphNode[]; links: GraphLink[] } {
-  const branchName = new Map(branches.map((b) => [b.id, b.name]));
+  // the trunk (no parent) reads "default", mirroring the tree; forks keep names
+  const branchName = new Map(
+    branches.map((b) => [b.id, b.parent_branch_id === null ? "default" : b.name])
+  );
   const ordered = [...versions].sort(
     (a, b) =>
       new Date(a.uploaded_at).getTime() - new Date(b.uploaded_at).getTime()
