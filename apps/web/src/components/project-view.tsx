@@ -273,6 +273,7 @@ export function ProjectView({
           x={branchMenu.x}
           y={branchMenu.y}
           isMain={branchTip(branchMenu.branch.id)?.id === project.main_version_id}
+          canDelete={branchMenu.branch.parent_branch_id !== null}
           onSetMain={() => setBranchMain(branchMenu.branch)}
           onDelete={() => setDeletingBranch(branchMenu.branch)}
           onClose={() => setBranchMenu(null)}

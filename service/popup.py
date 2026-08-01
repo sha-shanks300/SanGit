@@ -366,9 +366,10 @@ class CommitToast(QWidget):
 
     @staticmethod
     def _branch_label(b: dict) -> str:
-        """Display name for a branch — the trunk (no parent) reads 'main',
-        mirroring the web tree; forks show their own name."""
-        return "main" if b.get("parent_branch_id") is None else b["name"]
+        """Display name for a branch — the trunk (no parent) reads 'default', a
+        neutral origin label kept distinct from the Main *version* star (mirrors
+        the web tree); forks show their own name."""
+        return "default" if b.get("parent_branch_id") is None else b["name"]
 
     # ---- outcomes ----
     def _commit(self):
