@@ -67,6 +67,10 @@ export type VersionGraphProps = {
   onSelect: (version: Version) => void;
   /** Owner-only right-click on a node (viewport coordinates). */
   onNodeContextMenu?: (version: Version, x: number, y: number) => void;
+  /** Owner-only per-version like counts; presence enables the likes tooltip. */
+  likesByVersion?: Map<string, number>;
+  /** Owner-only: the most-liked version, crowned with a heart marker. */
+  mostLikedId?: string | null;
 };
 
 /**
@@ -85,6 +89,8 @@ export default function VersionGraphCanvas({
   selectedId,
   onSelect,
   onNodeContextMenu,
+  likesByVersion,
+  mostLikedId = null,
 }: VersionGraphProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const fgRef = useRef<
@@ -235,6 +241,17 @@ export default function VersionGraphCanvas({
             ctx.stroke();
             ctx.setLineDash([]);
 
+            // Most-liked crown: Rosso heart glyph + count at the upper-right,
+            // kept at a constant screen size (divide by globalScale).
+            if (v.id === mostLikedId) {
+              const c = likesByVersion?.get(v.id) ?? 0;
+              ctx.font = `${10 / globalScale}px sans-serif`;
+              ctx.fillStyle = tokens.primary;
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              ctx.fillText(`♥${c}`, n.x + NODE_R + 1.5, n.y - NODE_R - 1.5);
+            }
+
             // Name under the node once zoomed in enough to read it.
             if (globalScale > 1.2) {
               const label = (v.display_name || v.file_name).slice(0, 18);
@@ -265,6 +282,12 @@ export default function VersionGraphCanvas({
           <p className="mt-0.5 font-mono text-mono text-ink-tertiary">
             {hover.node.branchName} · {formatDate(hover.node.version.uploaded_at)}
           </p>
+          {likesByVersion && (
+            <p className="mt-0.5 font-mono text-mono text-ink-tertiary">
+              ♥ {likesByVersion.get(hover.node.version.id) ?? 0}
+              {hover.node.version.id === mostLikedId ? " · most liked" : ""}
+            </p>
+          )}
           <div className="mt-1.5 flex gap-1.5">
             {hover.node.isMain && <StatusBadge tone="accent">Main</StatusBadge>}
             {hover.node.version.render_status === "ready" ? (
