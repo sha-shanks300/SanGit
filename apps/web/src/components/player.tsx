@@ -79,10 +79,18 @@ export function PlayerBar() {
       <StatusBadge>render failed</StatusBadge>
     ) : null;
 
-  // The bar presents the project as the "song" and the producer as the
-  // "artist" — the internal version name is never surfaced here.
-  const songName = meta.projectTitle;
-  const artist = meta.artistName ?? "";
+  // Owners work at the version level, so their bar names the version (with
+  // project · branch beneath). Listeners get a clean "song" identity: the
+  // project as the title, the producer as the artist — the internal version
+  // name is never revealed to them.
+  const songName = meta.isOwner
+    ? version.display_name || version.file_name
+    : meta.projectTitle;
+  const artist = meta.isOwner
+    ? meta.branchName
+      ? `${meta.projectTitle} · ${meta.branchName}`
+      : meta.projectTitle
+    : meta.artistName ?? "";
 
   return (
     <>
