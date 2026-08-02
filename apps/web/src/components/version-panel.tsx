@@ -28,6 +28,9 @@ export function VersionPanel({
   shareToken,
   onRequestDelete,
   accessTab,
+  likeCount,
+  isMostLiked,
+  onSetMain,
 }: {
   version: Version;
   isOwner: boolean;
@@ -41,6 +44,12 @@ export function VersionPanel({
   /** Owner-only: content for the "Access" tab (.flp passkey). When provided the
    *  panel splits into Details/Access tabs; when absent it stays a single panel. */
   accessTab?: React.ReactNode;
+  /** Owner-only: this version's like count (undefined hides the stat). */
+  likeCount?: number;
+  /** Owner-only: this is the project's most-liked version. */
+  isMostLiked?: boolean;
+  /** Owner-only: promote this version to Main (one-click on the most-liked). */
+  onSetMain?: () => void;
 }) {
   const [name, setName] = useState(version.display_name ?? "");
   const [date, setDate] = useState(version.uploaded_at.slice(0, 10));
@@ -151,6 +160,22 @@ export function VersionPanel({
           <p className="mt-1 font-mono text-mono text-ink-tertiary">
             {version.file_name} · {version.flp_sha256.slice(0, 10)}
           </p>
+          {likeCount !== undefined && (
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className="flex items-center gap-1.5 text-body-sm text-ink-subtle"
+                title="Likes on this version"
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="var(--primary)" aria-hidden>
+                  <path d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z" />
+                </svg>
+                {likeCount} like{likeCount === 1 ? "" : "s"}
+              </span>
+              {isMostLiked && (
+                <StatusBadge tone="accent">most liked</StatusBadge>
+              )}
+            </div>
+          )}
         </div>
         {version.id === mainVersionId ? (
           <StatusBadge tone="accent">Main</StatusBadge>
@@ -162,6 +187,13 @@ export function VersionPanel({
           <StatusBadge tone="processing">processing</StatusBadge>
         )}
       </div>
+
+      {/* Promote the most-liked take to Main in one click (owner). */}
+      {isMostLiked && onSetMain && version.id !== mainVersionId && (
+        <Button variant="secondary" className="mt-4 w-full" onClick={onSetMain}>
+          Set as Main — most liked
+        </Button>
+      )}
 
       {accessTab && (
         <div

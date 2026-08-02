@@ -197,6 +197,8 @@ export function TimelineTree({
   onSelect,
   onNodeContextMenu,
   onBranchLabelClick,
+  likesByVersion,
+  mostLikedId = null,
 }: {
   branches: Branch[];
   versions: Version[];
@@ -207,6 +209,10 @@ export function TimelineTree({
   onNodeContextMenu?: (version: Version, x: number, y: number) => void;
   /** Owner-only left-click on a fork branch's label (viewport coordinates). */
   onBranchLabelClick?: (branch: Branch, x: number, y: number) => void;
+  /** Owner-only per-version like counts; presence enables the likes tooltip. */
+  likesByVersion?: Map<string, number>;
+  /** Owner-only: the most-liked version, crowned with a heart badge. */
+  mostLikedId?: string | null;
 }) {
   const layout = useMemo(
     () => computeLayout(branches, versions),
@@ -370,6 +376,8 @@ export function TimelineTree({
             const failed = v.render_status === "failed";
             const processing =
               v.render_status === "pending" || v.render_status === "rendering";
+            const likeCount = likesByVersion?.get(v.id) ?? 0;
+            const isMostLiked = v.id === mostLikedId;
             return (
               <g
                 key={v.id}
@@ -392,6 +400,8 @@ export function TimelineTree({
                 <title>
                   {(v.display_name || v.file_name) +
                     (isMain ? " · Main" : "") +
+                    (likesByVersion ? ` · ${likeCount} like${likeCount === 1 ? "" : "s"}` : "") +
+                    (isMostLiked ? " · most liked" : "") +
                     (processing ? " · processing" : failed ? " · render failed" : "")}
                 </title>
                 {isMain && (
@@ -432,6 +442,30 @@ export function TimelineTree({
                   >
                     Main
                   </text>
+                )}
+                {/* Most-liked crown: filled Rosso heart + count at the node's
+                    upper-right, canvas-outlined so it reads over the Main ring
+                    when a version is both. */}
+                {isMostLiked && (
+                  <g transform={`translate(${NODE_R + 1}, ${-NODE_R - 3})`}>
+                    <path
+                      transform="scale(0.72)"
+                      d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z"
+                      fill="var(--primary)"
+                      stroke="var(--canvas)"
+                      strokeWidth={1.4}
+                    />
+                    <text
+                      x={13}
+                      y={9}
+                      className="font-mono"
+                      fill="var(--primary)"
+                      fontSize={9}
+                      fontWeight={600}
+                    >
+                      {likeCount}
+                    </text>
+                  </g>
                 )}
                 <text
                   y={NODE_R + 16}
