@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useProject } from "@/lib/use-project";
+import { useProjectLikes } from "@/lib/use-project-likes";
 import { uploadPublicImage } from "@/lib/image-upload";
 import type { Branch, Version } from "@/lib/database.types";
 import { ProjectArtwork } from "@/components/project-artwork";
@@ -131,6 +132,30 @@ export function ProjectView({
     [projectQueue, player]
   );
 
+  // Producer-only like stats: per-version counts + project total, and the
+  // most-liked version (max count; ties broken by most-recent upload; null
+  // when nothing's been liked yet).
+  const versionIds = useMemo(() => versions.map((v) => v.id), [versions]);
+  const { likesByVersion, total: totalLikes } = useProjectLikes(
+    projectId,
+    versionIds,
+    isOwner
+  );
+  const mostLikedId = useMemo(() => {
+    let max = 0;
+    for (const c of likesByVersion.values()) if (c > max) max = c;
+    if (max === 0) return null;
+    const tied = versions
+      .filter((v) => (likesByVersion.get(v.id) ?? 0) === max)
+      .sort((a, b) => +new Date(b.uploaded_at) - +new Date(a.uploaded_at));
+    return tied[0]?.id ?? null;
+  }, [likesByVersion, versions]);
+
+  function promoteMostLiked() {
+    const v = versions.find((x) => x.id === mostLikedId);
+    if (v) setMain(v);
+  }
+
   /** After a delete, move selection to the chronologically previous version
    *  (versions arrive sorted by uploaded_at), falling back forward, then none. */
   function onVersionDeleted(deleted: Version) {
@@ -214,6 +239,34 @@ export function ProjectView({
               {branches.length} branch{branches.length === 1 ? "" : "es"} ·{" "}
               {versions.length} version{versions.length === 1 ? "" : "s"}
             </p>
+            {isOwner && (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <span
+                  className="flex items-center gap-1.5 text-body-sm text-ink-subtle"
+                  title="Total likes across all versions"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="var(--primary)"
+                    aria-hidden
+                  >
+                    <path d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z" />
+                  </svg>
+                  {totalLikes} like{totalLikes === 1 ? "" : "s"}
+                </span>
+                {mostLikedId && mostLikedId !== project.main_version_id && (
+                  <button
+                    onClick={promoteMostLiked}
+                    className="font-mono text-caption text-primary underline-offset-2 hover:underline"
+                    title="Promote the most-liked version to Main"
+                  >
+                    Set most-liked as Main
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -260,6 +313,8 @@ export function ProjectView({
             onNodeContextMenu={
               isOwner ? (v, x, y) => setMenu({ version: v, x, y }) : undefined
             }
+            likesByVersion={isOwner ? likesByVersion : undefined}
+            mostLikedId={isOwner ? mostLikedId : null}
           />
         ) : (
           <TimelineTree
@@ -274,6 +329,8 @@ export function ProjectView({
             onBranchLabelClick={
               isOwner ? (b, x, y) => setBranchMenu({ branch: b, x, y }) : undefined
             }
+            likesByVersion={isOwner ? likesByVersion : undefined}
+            mostLikedId={isOwner ? mostLikedId : null}
           />
         )}
       </Panel>
@@ -349,6 +406,9 @@ export function ProjectView({
             onChanged={refetch}
             onRequestDelete={isOwner ? () => setDeleting(selected) : undefined}
             accessTab={isOwner ? <FlpAccess projectId={project.id} /> : undefined}
+            likeCount={isOwner ? likesByVersion.get(selected.id) ?? 0 : undefined}
+            isMostLiked={isOwner && selected.id === mostLikedId}
+            onSetMain={isOwner ? () => setMain(selected) : undefined}
           />
           <Interactions versionId={selected.id} />
         </div>
