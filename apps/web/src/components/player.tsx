@@ -20,9 +20,9 @@ import { cn, formatDuration } from "@/lib/utils";
  * context (all audio/transport/queue state lives in <PlayerProvider>). Renders
  * nothing until a track is loaded.
  *
- * Desktop (`sm:`+) is the full bar (transport, artwork, seek, loop, volume,
- * audience actions); below that a Spotify-style mini-bar that expands into a
- * full-screen now-playing sheet (chevron or swipe-down to close).
+ * Desktop (`sm:`+) is a three-zone bar in the streaming-player idiom: artwork +
+ * track meta pinned far left, transport + scrubber centred, utilities right.
+ * Below `sm:` it's a mini-bar that expands into a full-screen now-playing sheet.
  */
 export function PlayerBar() {
   const player = usePlayer();
@@ -55,8 +55,6 @@ export function PlayerBar() {
   }
   const seekValue = duration ? Math.round((time / duration) * 1000) : 0;
 
-  // Swipe-down on the sheet's non-interactive surface. Interactive children
-  // (seek slider, buttons) keep their own touch behavior.
   function onSheetTouchStart(e: React.TouchEvent) {
     if ((e.target as HTMLElement).closest("input,button,a")) return;
     dragStartRef.current = e.touches[0].clientY;
@@ -81,109 +79,109 @@ export function PlayerBar() {
       <StatusBadge>render failed</StatusBadge>
     ) : null;
 
+  const trackTitle = version.display_name || version.file_name;
+  const subtitle = meta.branchName
+    ? `${meta.projectTitle} · ${meta.branchName}`
+    : meta.projectTitle;
+
   return (
     <>
       {/* The sheet must NOT live inside this bar: backdrop-blur makes the bar
           a containing block for fixed descendants, which would trap the
           "inset-0" overlay inside the strip. */}
       <div className="fixed inset-x-0 bottom-0 z-50 border-t border-hairline bg-surface-1/95 backdrop-blur">
-        <div className="mx-auto hidden h-[72px] max-w-[1280px] items-center gap-4 px-6 sm:flex">
-          {/* transport */}
-          <div className="flex items-center gap-1">
-            <button
-              className="rounded-md p-2 text-ink-subtle hover:text-ink disabled:opacity-40"
-              onClick={player.prev}
-              disabled={!player.hasPrev}
-              aria-label="Previous"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M4 2h2v12H4zM13 2v12L6.5 8z" />
-              </svg>
-            </button>
-            <PlayToggle
-              playing={playing}
-              buffering={buffering}
-              playable={playable}
-              onClick={player.toggle}
-              size="md"
+        {/* ── Desktop: [meta] · [transport+scrubber] · [utilities] ──
+            content-center (not just items-center): the row block is shorter
+            than the bar, so without it align-content:start pins it to the top. */}
+        <div className="hidden h-[104px] grid-cols-[1fr_auto_1fr] content-center items-center gap-6 px-5 sm:grid">
+          {/* left: artwork + title/subtitle + listener like */}
+          <div className="flex min-w-0 items-center gap-3">
+            <ProjectArtwork
+              projectId={artwork.projectId}
+              artworkUrl={artwork.artworkUrl}
+              title={artwork.title}
+              className="h-14 w-14 shrink-0 border border-hairline"
+              initialClassName="text-body-sm"
             />
-            <button
-              className="rounded-md p-2 text-ink-subtle hover:text-ink disabled:opacity-40"
-              onClick={player.next}
-              disabled={!player.hasNext}
-              aria-label="Next"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <path d="M10 2h2v12h-2zM3 2v12l6.5-6z" />
-              </svg>
-            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-body-sm text-ink">{trackTitle}</p>
+                {statusBadge}
+              </div>
+              <p className="truncate font-mono text-caption text-ink-tertiary">
+                {subtitle}
+              </p>
+            </div>
+            {!meta.isOwner && (
+              <div className="shrink-0">
+                <LikeHeart versionId={version.id} api={api} />
+              </div>
+            )}
           </div>
 
-          {/* artwork */}
-          <ProjectArtwork
-            projectId={artwork.projectId}
-            artworkUrl={artwork.artworkUrl}
-            title={artwork.title}
-            className="h-12 w-12 shrink-0 border border-hairline"
-            initialClassName="text-body-sm"
-          />
-
-          {/* track info + seek */}
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-body-sm text-ink">
-                {version.display_name || version.file_name}
-              </p>
-              {version.id === meta.mainVersionId && (
-                <StatusBadge tone="accent">Main</StatusBadge>
-              )}
-              {statusBadge}
+          {/* centre: transport row + scrubber */}
+          <div className="flex w-[40vw] min-w-[300px] max-w-[560px] flex-col items-center gap-2.5">
+            <div className="flex items-center gap-5">
+              <IconButton
+                label="Previous"
+                onClick={player.prev}
+                disabled={!player.hasPrev}
+              >
+                <PrevIcon />
+              </IconButton>
+              <PlayToggle
+                playing={playing}
+                buffering={buffering}
+                playable={playable}
+                onClick={player.toggle}
+                size="md"
+              />
+              <IconButton
+                label="Next"
+                onClick={player.next}
+                disabled={!player.hasNext}
+              >
+                <NextIcon />
+              </IconButton>
+              <IconButton
+                label={player.loop ? "Repeat on" : "Repeat off"}
+                onClick={player.toggleLoop}
+                pressed={player.loop}
+                active={player.loop}
+              >
+                <RepeatIcon />
+              </IconButton>
             </div>
-            <p className="truncate font-mono text-caption text-ink-tertiary">
-              {meta.projectTitle}
-              {meta.branchName ? ` · ${meta.branchName}` : ""}
-            </p>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="w-10 text-right font-mono text-mono text-ink-tertiary">
+            <div className="flex w-full items-center gap-2.5">
+              <span className="w-10 shrink-0 text-right font-mono text-mono tabular-nums text-ink-tertiary">
                 {formatDuration(time)}
               </span>
               <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
-              <span className="w-10 font-mono text-mono text-ink-tertiary">
+              <span className="w-10 shrink-0 font-mono text-mono tabular-nums text-ink-tertiary">
                 {formatDuration(duration)}
               </span>
             </div>
           </div>
 
-          {/* enjoyment: loop + volume */}
-          <LoopButton on={player.loop} onClick={player.toggleLoop} />
-          <VolumeControl
-            volume={player.volume}
-            muted={player.muted}
-            onVolume={player.setVolume}
-            onToggleMute={player.toggleMute}
-          />
-
-          {/* audience actions: owner management vs. listener social */}
-          <div className="flex items-center gap-1">
-            {meta.isOwner
-              ? meta.onSetMain &&
-                version.id !== meta.mainVersionId && (
-                  <Button variant="secondary" onClick={() => meta.onSetMain!(version)}>
-                    Set as Main
-                  </Button>
-                )
-              : (
-                <>
-                  <LikeHeart versionId={version.id} api={api} />
-                  {meta.favoriteProjectId && (
-                    <FavoriteButton projectId={meta.favoriteProjectId} bare />
-                  )}
-                </>
+          {/* right: management (owner) + volume */}
+          <div className="flex items-center justify-end gap-3">
+            {meta.isOwner &&
+              meta.onSetMain &&
+              version.id !== meta.mainVersionId && (
+                <Button variant="secondary" onClick={() => meta.onSetMain!(version)}>
+                  Set as Main
+                </Button>
               )}
+            <VolumeControl
+              volume={player.volume}
+              muted={player.muted}
+              onVolume={player.setVolume}
+              onToggleMute={player.toggleMute}
+            />
           </div>
         </div>
 
-        {/* Mobile mini-bar — tap to expand into the now-playing sheet. */}
+        {/* ── Mobile mini-bar — tap to expand ── */}
         <div
           className="relative flex h-14 items-center gap-3 px-4 sm:hidden"
           onClick={() => setExpanded(true)}
@@ -204,9 +202,7 @@ export function PlayerBar() {
             initialClassName="text-body-sm"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-body-sm text-ink">
-              {version.display_name || version.file_name}
-            </p>
+            <p className="truncate text-body-sm text-ink">{trackTitle}</p>
             <p className="font-mono text-caption text-ink-tertiary">
               {formatDuration(time)} / {formatDuration(duration)}
             </p>
@@ -224,8 +220,7 @@ export function PlayerBar() {
         </div>
       </div>
 
-      {/* Full-screen now-playing sheet (mobile only) — sibling of the bar,
-          see the containing-block note above. */}
+      {/* ── Full-screen now-playing sheet (mobile only) ── */}
       {expanded && (
         <div
           className={cn(
@@ -260,21 +255,15 @@ export function PlayerBar() {
             />
 
             <div className="w-full max-w-[400px]">
-              {/* Anchored title row: track info left, borderless actions
-                  (heart + role-dependent second icon) right. */}
               <div className="flex items-center gap-2">
-                <div className="flex min-w-0 flex-1 items-center gap-2">
-                  <p className="truncate text-card-title text-ink">
-                    {version.display_name || version.file_name}
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <p className="truncate text-card-title text-ink">{trackTitle}</p>
+                  <p className="truncate font-mono text-caption text-ink-tertiary">
+                    {subtitle}
                   </p>
-                  {version.id === meta.mainVersionId && (
-                    <StatusBadge tone="accent" className="shrink-0">
-                      Main
-                    </StatusBadge>
-                  )}
-                  {statusBadge && <span className="shrink-0">{statusBadge}</span>}
                 </div>
                 <div className="flex shrink-0 items-center">
+                  {statusBadge && <span className="mr-1 shrink-0">{statusBadge}</span>}
                   <LikeHeart versionId={version.id} api={api} />
                   {meta.isOwner && meta.onSetMain ? (
                     <MainToggle
@@ -288,27 +277,20 @@ export function PlayerBar() {
                 </div>
               </div>
 
-              <div className="mt-6 flex items-center gap-2">
-                <span className="w-10 text-right font-mono text-mono text-ink-tertiary">
+              <div className="mt-6 flex items-center gap-2.5">
+                <span className="w-10 text-right font-mono text-mono tabular-nums text-ink-tertiary">
                   {formatDuration(time)}
                 </span>
                 <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
-                <span className="w-10 font-mono text-mono text-ink-tertiary">
+                <span className="w-10 font-mono text-mono tabular-nums text-ink-tertiary">
                   {formatDuration(duration)}
                 </span>
               </div>
 
-              <div className="mt-6 flex items-center justify-center gap-6">
-                <button
-                  className="p-3 text-ink-subtle disabled:opacity-40"
-                  onClick={player.prev}
-                  disabled={!player.hasPrev}
-                  aria-label="Previous"
-                >
-                  <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M4 2h2v12H4zM13 2v12L6.5 8z" />
-                  </svg>
-                </button>
+              <div className="mt-6 flex items-center justify-center gap-8">
+                <IconButton label="Previous" onClick={player.prev} disabled={!player.hasPrev} size="lg">
+                  <PrevIcon />
+                </IconButton>
                 <PlayToggle
                   playing={playing}
                   buffering={buffering}
@@ -316,20 +298,20 @@ export function PlayerBar() {
                   onClick={player.toggle}
                   size="lg"
                 />
-                <button
-                  className="p-3 text-ink-subtle disabled:opacity-40"
-                  onClick={player.next}
-                  disabled={!player.hasNext}
-                  aria-label="Next"
-                >
-                  <svg width="22" height="22" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M10 2h2v12h-2zM3 2v12l6.5-6z" />
-                  </svg>
-                </button>
+                <IconButton label="Next" onClick={player.next} disabled={!player.hasNext} size="lg">
+                  <NextIcon />
+                </IconButton>
               </div>
 
               <div className="mt-6 flex items-center justify-center">
-                <LoopButton on={player.loop} onClick={player.toggleLoop} />
+                <IconButton
+                  label={player.loop ? "Repeat on" : "Repeat off"}
+                  onClick={player.toggleLoop}
+                  pressed={player.loop}
+                  active={player.loop}
+                >
+                  <RepeatIcon />
+                </IconButton>
               </div>
             </div>
           </div>
@@ -339,7 +321,45 @@ export function PlayerBar() {
   );
 }
 
-/** Play/pause circle with a buffering spinner. Rosso when playable. */
+/* ─────────────────────────── controls ─────────────────────────── */
+
+/** Ghost icon button — greys at rest, brightens on hover, Rosso when active. */
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  pressed,
+  active,
+  size = "md",
+  children,
+}: {
+  label: string;
+  onClick: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+  pressed?: boolean;
+  active?: boolean;
+  size?: "md" | "lg";
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
+      className={cn(
+        "flex items-center justify-center rounded-md transition-colors disabled:opacity-30",
+        size === "lg" ? "p-2.5" : "p-1.5",
+        active ? "text-primary" : "text-ink-subtle hover:text-ink"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** White play/pause disc (streaming idiom) with a buffering spinner. */
 function PlayToggle({
   playing,
   buffering,
@@ -353,14 +373,16 @@ function PlayToggle({
   onClick: (e: React.MouseEvent) => void;
   size: "sm" | "md" | "lg";
 }) {
-  const box = size === "lg" ? "h-14 w-14" : size === "md" ? "h-10 w-10" : "h-10 w-10";
-  const icon = size === "lg" ? 18 : 14;
+  const box = size === "lg" ? "h-14 w-14" : size === "md" ? "h-11 w-11" : "h-10 w-10";
+  const icon = size === "lg" ? 22 : 18;
   return (
     <button
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full",
+        "flex shrink-0 items-center justify-center rounded-full transition-transform",
         box,
-        playable ? "bg-primary text-white hover:bg-primary-hover" : "bg-surface-3 text-ink-tertiary"
+        playable
+          ? "bg-ink text-canvas hover:scale-105"
+          : "bg-surface-3 text-ink-tertiary"
       )}
       onClick={onClick}
       disabled={!playable}
@@ -368,17 +390,13 @@ function PlayToggle({
     >
       {buffering ? (
         <svg className="animate-spin" width={icon} height={icon} viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
-          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.25" />
+          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
         </svg>
       ) : playing ? (
-        <svg width={icon} height={icon} viewBox="0 0 14 14" fill="currentColor">
-          <path d="M2 1h4v12H2zM8 1h4v12H8z" />
-        </svg>
+        <PauseIcon size={icon} />
       ) : (
-        <svg width={icon} height={icon} viewBox="0 0 14 14" fill="currentColor">
-          <path d="M3 1l10 6-10 6z" />
-        </svg>
+        <PlayIcon size={icon} />
       )}
     </button>
   );
@@ -408,27 +426,6 @@ function SeekSlider({
   );
 }
 
-/** Repeat-one toggle — tinted Rosso when on. */
-function LoopButton({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={on}
-      aria-label={on ? "Repeat on" : "Repeat off"}
-      title="Repeat one"
-      className={cn(
-        "rounded-md p-2 transition-colors",
-        on ? "text-primary" : "text-ink-subtle hover:text-ink"
-      )}
-    >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-        <path d="M4 3h6a3 3 0 0 1 3 3v1M12 13H6a3 3 0 0 1-3-3V9" strokeLinecap="round" />
-        <path d="M11 1.5 13 3l-2 1.5M5 14.5 3 13l2-1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
-  );
-}
-
 /** Mute button + level slider (desktop only). */
 function VolumeControl({
   volume,
@@ -443,27 +440,14 @@ function VolumeControl({
 }) {
   const level = muted ? 0 : volume;
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-2">
       <button
         onClick={onToggleMute}
         aria-label={muted ? "Unmute" : "Mute"}
         title={muted ? "Unmute" : "Mute"}
-        className="rounded-md p-2 text-ink-subtle transition-colors hover:text-ink"
+        className="flex items-center justify-center rounded-md p-1.5 text-ink-subtle transition-colors hover:text-ink"
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M3 6h2.5L9 3v10L5.5 10H3z" />
-          {level === 0 ? (
-            <path d="M11 6l3 3M14 6l-3 3" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
-          ) : (
-            <path
-              d={level < 0.5 ? "M11 6a3 3 0 0 1 0 4" : "M11 5a4.5 4.5 0 0 1 0 6M11 6a3 3 0 0 1 0 4"}
-              stroke="currentColor"
-              strokeWidth="1.2"
-              fill="none"
-              strokeLinecap="round"
-            />
-          )}
-        </svg>
+        <VolumeIcon level={level} />
       </button>
       <input
         type="range"
@@ -471,12 +455,79 @@ function VolumeControl({
         max={100}
         value={Math.round(level * 100)}
         onChange={(e) => onVolume(Number(e.target.value) / 100)}
-        className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+        className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
         aria-label="Volume"
       />
     </div>
   );
 }
+
+/* ──────────────────────────── icons ───────────────────────────── */
+// Feather/Lucide geometry (24-grid) for legible, consistent controls.
+
+function PlayIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M7 4.5v15a1 1 0 0 0 1.53.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5z" />
+    </svg>
+  );
+}
+function PauseIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="6.5" y="4.5" width="3.5" height="15" rx="0.5" />
+      <rect x="14" y="4.5" width="3.5" height="15" rx="0.5" />
+    </svg>
+  );
+}
+function PrevIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="6" y="5" width="2.4" height="14" rx="0.6" />
+      <path d="M20 6v12a1 1 0 0 1-1.54.84l-9-6a1 1 0 0 1 0-1.68l9-6A1 1 0 0 1 20 6z" />
+    </svg>
+  );
+}
+function NextIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="15.6" y="5" width="2.4" height="14" rx="0.6" />
+      <path d="M4 6v12a1 1 0 0 0 1.54.84l9-6a1 1 0 0 0 0-1.68l-9-6A1 1 0 0 0 4 6z" />
+    </svg>
+  );
+}
+function RepeatIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polyline points="17 1 21 5 17 9" />
+      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+      <polyline points="7 23 3 19 7 15" />
+      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+    </svg>
+  );
+}
+function VolumeIcon({ level }: { level: number }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
+      {level === 0 ? (
+        <>
+          <line x1="22" y1="9" x2="16" y2="15" />
+          <line x1="16" y1="9" x2="22" y2="15" />
+        </>
+      ) : level < 0.5 ? (
+        <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+      ) : (
+        <>
+          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+          <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/* ───────────────────────── social / main ──────────────────────── */
 
 /**
  * Heart-like — same snapshot/toggle plumbing as the Interactions panel
@@ -519,7 +570,7 @@ function LikeHeart({
       aria-label={mine ? "Unlike" : "Like"}
       className={cn(
         "flex items-center gap-1.5 p-2 text-body-sm transition-colors disabled:opacity-50",
-        mine ? "text-ink" : "text-ink-subtle"
+        mine ? "text-primary" : "text-ink-subtle hover:text-ink"
       )}
     >
       <svg
