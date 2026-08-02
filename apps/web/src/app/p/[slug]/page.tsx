@@ -112,6 +112,7 @@ export default async function PublicProjectPage({
           projectId={project.id}
           isOwner={false}
           headerActions={<CopyLinkButton path={`/p/${project.slug}`} />}
+          artistName={profile?.display_name || profile?.username || null}
         />
       </main>
     </PlayerProvider>
