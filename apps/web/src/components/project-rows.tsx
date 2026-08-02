@@ -18,6 +18,17 @@ export function ProjectRows({ artistName }: { artistName?: string | null }) {
   const [projects, setProjects] = useState<ProjectRowData[] | null>(null);
 
   const refetch = useCallback(async () => {
+    // The dashboard is an owner-only view, so scope to the current user.
+    // RLS alone is NOT enough here: "public projects are readable" makes every
+    // is_public row world-readable (for public profiles/share pages), so an
+    // unscoped select would surface every user's public catalog on this page.
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setProjects([]);
+      return;
+    }
     // "Recent" means the last commit, not projects.updated_at — settings
     // saves bump updated_at and would shove stale projects to the top.
     const { data, error } = await supabase
@@ -27,6 +38,7 @@ export function ProjectRows({ artistName }: { artistName?: string | null }) {
         // FK (projects_main_version_fk) — must be named to dodge PGRST201.
         "*, versions!versions_project_id_fkey(count), branches(count), latest:versions!versions_project_id_fkey(uploaded_at), main:versions!projects_main_version_fk(*)"
       )
+      .eq("user_id", user.id)
       .order("uploaded_at", { referencedTable: "latest", ascending: false })
       .limit(1, { referencedTable: "latest" })
       .returns<ProjectRowData[]>();
