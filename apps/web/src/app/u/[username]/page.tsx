@@ -97,6 +97,7 @@ export default async function ProfilePage({
         meta: {
           projectId: p.id,
           projectTitle: p.title,
+          artistName: profile.display_name || profile.username,
           artworkUrl: p.artwork_url,
           isOwner: false,
           mainVersionId: p.main_version_id,

@@ -79,10 +79,10 @@ export function PlayerBar() {
       <StatusBadge>render failed</StatusBadge>
     ) : null;
 
-  const trackTitle = version.display_name || version.file_name;
-  const subtitle = meta.branchName
-    ? `${meta.projectTitle} · ${meta.branchName}`
-    : meta.projectTitle;
+  // The bar presents the project as the "song" and the producer as the
+  // "artist" — the internal version name is never surfaced here.
+  const songName = meta.projectTitle;
+  const artist = meta.artistName ?? "";
 
   return (
     <>
@@ -105,18 +105,15 @@ export function PlayerBar() {
             />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <p className="truncate text-body-sm text-ink">{trackTitle}</p>
+                <p className="truncate text-body-sm text-ink">{songName}</p>
                 {statusBadge}
               </div>
-              <p className="truncate font-mono text-caption text-ink-tertiary">
-                {subtitle}
-              </p>
+              {artist && (
+                <p className="truncate font-mono text-caption text-ink-tertiary">
+                  {artist}
+                </p>
+              )}
             </div>
-            {!meta.isOwner && (
-              <div className="shrink-0">
-                <LikeHeart versionId={version.id} api={api} />
-              </div>
-            )}
           </div>
 
           {/* centre: transport row + scrubber */}
@@ -169,14 +166,17 @@ export function PlayerBar() {
             </div>
           </div>
 
-          {/* right: management (owner) + volume */}
+          {/* right: management (owner) or like (listener) + volume */}
           <div className="flex items-center justify-end gap-3">
-            {meta.isOwner &&
-              meta.onSetMain &&
-              version.id !== meta.mainVersionId && (
-                <Button variant="secondary" onClick={() => meta.onSetMain!(version)}>
-                  Set as Main
-                </Button>
+            {meta.isOwner
+              ? meta.onSetMain &&
+                version.id !== meta.mainVersionId && (
+                  <Button variant="secondary" onClick={() => meta.onSetMain!(version)}>
+                    Set as Main
+                  </Button>
+                )
+              : (
+                <LikeHeart versionId={version.id} api={api} showCount={false} />
               )}
             <VolumeControl
               volume={player.volume}
@@ -208,7 +208,7 @@ export function PlayerBar() {
             initialClassName="text-body-sm"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-body-sm text-ink">{trackTitle}</p>
+            <p className="truncate text-body-sm text-ink">{songName}</p>
             <p className="font-mono text-caption text-ink-tertiary">
               {formatDuration(time)} / {formatDuration(duration)}
             </p>
@@ -263,14 +263,16 @@ export function PlayerBar() {
             <div className="w-full max-w-[400px]">
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="truncate text-card-title text-ink">{trackTitle}</p>
-                  <p className="truncate font-mono text-caption text-ink-tertiary">
-                    {subtitle}
-                  </p>
+                  <p className="truncate text-card-title text-ink">{songName}</p>
+                  {artist && (
+                    <p className="truncate font-mono text-caption text-ink-tertiary">
+                      {artist}
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 items-center">
                   {statusBadge && <span className="mr-1 shrink-0">{statusBadge}</span>}
-                  <LikeHeart versionId={version.id} api={api} />
+                  <LikeHeart versionId={version.id} api={api} showCount={false} />
                   {meta.isOwner && meta.onSetMain ? (
                     <MainToggle
                       version={version}
@@ -552,9 +554,12 @@ function VolumeIcon({ level }: { level: number }) {
 function LikeHeart({
   versionId,
   api,
+  showCount = true,
 }: {
   versionId: string;
   api: InteractionsApi;
+  /** Listeners see a bare heart toggle — the count is producer-only. */
+  showCount?: boolean;
 }) {
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [likes, setLikes] = useState(0);
@@ -599,7 +604,7 @@ function LikeHeart({
       >
         <path d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z" />
       </svg>
-      {likes}
+      {showCount && likes}
     </button>
   );
 }

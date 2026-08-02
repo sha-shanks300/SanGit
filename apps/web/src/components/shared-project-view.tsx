@@ -95,6 +95,8 @@ export function SharedProjectView({
         meta: {
           projectId: project.id,
           projectTitle: project.title,
+          artistName:
+            project.owner?.display_name || project.owner?.username || null,
           artworkUrl: project.artwork_url,
           isOwner: false,
           mainVersionId: project.main_version_id,
