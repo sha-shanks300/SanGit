@@ -20,7 +20,7 @@ export default async function DashboardPage() {
       ) : (
         <Eyebrow>Dashboard</Eyebrow>
       )}
-      <ProjectRows />
+      <ProjectRows artistName={profile?.display_name || profile?.username || null} />
     </div>
   );
 }

@@ -22,11 +22,19 @@ export default async function ProjectPage({
 
   if (!project || project.user_id !== user?.id) notFound();
 
+  // The owner is the artist here — their name is the player bar's artist line.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, username")
+    .eq("id", project.user_id)
+    .maybeSingle();
+
   return (
     <ProjectView
       projectId={project.id}
       isOwner
       headerActions={<ProjectSettings project={project} />}
+      artistName={profile?.display_name || profile?.username || null}
     />
   );
 }
