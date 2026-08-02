@@ -434,7 +434,7 @@ export function TimelineTree({
                 />
                 {isMain && (
                   <text
-                    y={-NODE_R - 12}
+                    y={-NODE_R - (isMostLiked ? 21 : 12)}
                     textAnchor="middle"
                     fill="var(--primary)"
                     fontSize={10}
@@ -443,29 +443,18 @@ export function TimelineTree({
                     Main
                   </text>
                 )}
-                {/* Most-liked crown: filled Rosso heart + count at the node's
-                    upper-right, canvas-outlined so it reads over the Main ring
-                    when a version is both. */}
+                {/* Most-liked: a king's crown directly on top of the node,
+                    canvas-outlined so it reads over the Main ring when a
+                    version is both Main and most-liked. */}
                 {isMostLiked && (
-                  <g transform={`translate(${NODE_R + 1}, ${-NODE_R - 3})`}>
-                    <path
-                      transform="scale(0.72)"
-                      d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z"
-                      fill="var(--primary)"
-                      stroke="var(--canvas)"
-                      strokeWidth={1.4}
-                    />
-                    <text
-                      x={13}
-                      y={9}
-                      className="font-mono"
-                      fill="var(--primary)"
-                      fontSize={9}
-                      fontWeight={600}
-                    >
-                      {likeCount}
-                    </text>
-                  </g>
+                  <path
+                    transform={`translate(0, ${-NODE_R - 8})`}
+                    d="M-6 4 L-6 -2 L-3 1 L0 -4 L3 1 L6 -2 L6 4 Z"
+                    fill="var(--primary)"
+                    stroke="var(--canvas)"
+                    strokeWidth={0.75}
+                    strokeLinejoin="round"
+                  />
                 )}
                 <text
                   y={NODE_R + 16}

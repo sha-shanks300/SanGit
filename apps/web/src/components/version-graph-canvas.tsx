@@ -241,15 +241,23 @@ export default function VersionGraphCanvas({
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Most-liked crown: Rosso heart glyph + count at the upper-right,
-            // kept at a constant screen size (divide by globalScale).
+            // Most-liked: a king's crown directly on top of the node, kept at
+            // a constant screen size (scale by 1/globalScale).
             if (v.id === mostLikedId) {
-              const c = likesByVersion?.get(v.id) ?? 0;
-              ctx.font = `${10 / globalScale}px sans-serif`;
+              const s = 1 / globalScale;
+              const cx = n.x;
+              const b = n.y - NODE_R - 3; // crown bottom sits just above the node
+              ctx.beginPath();
+              ctx.moveTo(cx - 6 * s, b);
+              ctx.lineTo(cx - 6 * s, b - 6 * s);
+              ctx.lineTo(cx - 3 * s, b - 3 * s);
+              ctx.lineTo(cx, b - 8 * s);
+              ctx.lineTo(cx + 3 * s, b - 3 * s);
+              ctx.lineTo(cx + 6 * s, b - 6 * s);
+              ctx.lineTo(cx + 6 * s, b);
+              ctx.closePath();
               ctx.fillStyle = tokens.primary;
-              ctx.textAlign = "left";
-              ctx.textBaseline = "middle";
-              ctx.fillText(`♥${c}`, n.x + NODE_R + 1.5, n.y - NODE_R - 1.5);
+              ctx.fill();
             }
 
             // Name under the node once zoomed in enough to read it.

@@ -13,7 +13,7 @@ import type { PlayerTrack } from "@/components/player-context";
  * refresh. NB: `versions!versions_project_id_fkey` disambiguates the embed —
  * projects↔versions has a second FK via main_version_id (PGRST201).
  */
-export function ProjectRows() {
+export function ProjectRows({ artistName }: { artistName?: string | null }) {
   const supabase = useMemo(() => createClient(), []);
   const [projects, setProjects] = useState<ProjectRowData[] | null>(null);
 
@@ -75,6 +75,7 @@ export function ProjectRows() {
           meta: {
             projectId: p.id,
             projectTitle: p.title,
+            artistName,
             artworkUrl: p.artwork_url,
             isOwner: true,
             mainVersionId: p.main_version_id,
@@ -83,7 +84,7 @@ export function ProjectRows() {
       }
     }
     return { queue: q, indexByProject: byId };
-  }, [projects]);
+  }, [projects, artistName]);
 
   if (projects === null) {
     return (

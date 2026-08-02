@@ -12,7 +12,10 @@ import type { InteractionsApi } from "@/components/interactions";
  */
 export type TrackMeta = {
   projectId: string;
+  /** The project name — shown as the "song" title in the bar. */
   projectTitle: string;
+  /** The producer's name — shown as the "artist" line under the title. */
+  artistName?: string | null;
   artworkUrl: string | null;
   isOwner: boolean;
   mainVersionId: string | null;
