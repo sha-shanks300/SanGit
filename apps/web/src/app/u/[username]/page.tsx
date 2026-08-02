@@ -6,6 +6,8 @@ import { TopNav } from "@/components/top-nav";
 import { ProjectsSectionHeading } from "@/components/section-heading";
 import { ProfileHeader } from "@/components/profile-header";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
+import { PlayerProvider } from "@/components/player-provider";
+import type { PlayerTrack } from "@/components/player-context";
 
 export async function generateMetadata({
   params,
@@ -66,7 +68,9 @@ export default async function ProfilePage({
   const { data } = await supabase
     .from("projects")
     .select(
-      "*, versions!versions_project_id_fkey(count), branches(count), latest:versions!versions_project_id_fkey(uploaded_at)"
+      // `main:` embeds the Main version via the projects_main_version_fk FK
+      // (named to dodge PGRST201) so shared listeners can hover-play it.
+      "*, versions!versions_project_id_fkey(count), branches(count), latest:versions!versions_project_id_fkey(uploaded_at), main:versions!projects_main_version_fk(*)"
     )
     .eq("user_id", profile.id)
     .eq("is_public", true)
@@ -79,10 +83,33 @@ export default async function ProfilePage({
       +new Date(a.latest?.[0]?.uploaded_at ?? a.created_at)
   );
 
+  // Listener playlist: the Main track of each public project (ready ones only),
+  // in the same order. audioUrlFor defaults to /api/audio/:id, which mints a
+  // signed URL for anyone on a public project. isOwner:false → the bar shows
+  // the listener (social) actions, never management.
+  const queue: PlayerTrack[] = [];
+  const indexByProject = new Map<string, number>();
+  for (const p of projects) {
+    if (p.main && p.main.render_status === "ready") {
+      indexByProject.set(p.id, queue.length);
+      queue.push({
+        version: p.main,
+        meta: {
+          projectId: p.id,
+          projectTitle: p.title,
+          artworkUrl: p.artwork_url,
+          isOwner: false,
+          mainVersionId: p.main_version_id,
+          favoriteProjectId: p.id,
+        },
+      });
+    }
+  }
+
   return (
     <>
       <TopNav />
-      <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10">
+      <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10 pb-28">
         <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
 
         <section className="mt-12">
@@ -95,16 +122,22 @@ export default async function ProfilePage({
               Nothing public yet.
             </p>
           ) : (
-            <div className="mt-6 flex flex-col gap-3">
-              {projects.map((p) => (
-                <ProjectRow
-                  key={p.id}
-                  project={p}
-                  href={`/p/${p.slug}`}
-                  showVisibility={false}
-                />
-              ))}
-            </div>
+            // One provider for the profile's listener player: hover-play a
+            // project's Main from the row, then next/prev across the profile.
+            <PlayerProvider>
+              <div className="mt-6 flex flex-col gap-3">
+                {projects.map((p) => (
+                  <ProjectRow
+                    key={p.id}
+                    project={p}
+                    href={`/p/${p.slug}`}
+                    showVisibility={false}
+                    playQueue={queue}
+                    playIndex={indexByProject.get(p.id) ?? -1}
+                  />
+                ))}
+              </div>
+            </PlayerProvider>
           )}
         </section>
       </main>

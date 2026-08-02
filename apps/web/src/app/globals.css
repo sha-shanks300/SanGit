@@ -137,6 +137,8 @@ h3 {
 @theme {
   --animate-tree-fade-in: tree-fade-in 300ms ease;
   --animate-tree-node-exit: tree-node-exit 320ms ease forwards;
+  /* Player bar entrance — slides up from below when a track first loads. */
+  --animate-player-slide-up: player-slide-up 280ms cubic-bezier(0.22, 1, 0.36, 1);
 
   @keyframes tree-fade-in {
     from {
@@ -148,6 +150,13 @@ h3 {
     to {
       opacity: 0;
       transform: scale(0.4);
+    }
+  }
+
+  @keyframes player-slide-up {
+    from {
+      transform: translateY(100%);
+      opacity: 0;
     }
   }
 }
