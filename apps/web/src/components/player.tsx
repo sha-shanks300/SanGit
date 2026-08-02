@@ -89,7 +89,7 @@ export function PlayerBar() {
       {/* The sheet must NOT live inside this bar: backdrop-blur makes the bar
           a containing block for fixed descendants, which would trap the
           "inset-0" overlay inside the strip. */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-hairline bg-surface-1/95 backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-50 animate-player-slide-up border-t border-hairline bg-surface-1/95 backdrop-blur">
         {/* ── Desktop: [meta] · [transport+scrubber] · [utilities] ──
             content-center (not just items-center): the row block is shorter
             than the bar, so without it align-content:start pins it to the top. */}
@@ -122,6 +122,12 @@ export function PlayerBar() {
           {/* centre: transport row + scrubber */}
           <div className="flex w-[40vw] min-w-[300px] max-w-[560px] flex-col items-center gap-2.5">
             <div className="flex items-center gap-5">
+              {/* Invisible mirror of the repeat button so the play disc lands on
+                  the exact centre (row is symmetric: spacer·prev·PLAY·next·repeat),
+                  aligning it with the scrubber's midpoint below. */}
+              <span aria-hidden className="invisible p-1.5">
+                <RepeatIcon />
+              </span>
               <IconButton
                 label="Previous"
                 onClick={player.prev}
@@ -412,6 +418,7 @@ function SeekSlider({
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   disabled: boolean;
 }) {
+  const pct = value / 10; // value is 0–1000
   return (
     <input
       type="range"
@@ -420,10 +427,18 @@ function SeekSlider({
       value={value}
       onChange={onChange}
       disabled={disabled}
-      className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+      style={{ background: fillTrack(pct) }}
+      className="h-1 flex-1 cursor-pointer appearance-none rounded-full accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
       aria-label="Seek"
     />
   );
+}
+
+/** Two-tone range track: Rosso up to `pct`, surface grey after — the played
+ *  portion reads as filled (native range lower-fill isn't stylable in Chrome). */
+function fillTrack(pct: number) {
+  const p = Math.min(100, Math.max(0, pct));
+  return `linear-gradient(to right, var(--primary) ${p}%, var(--surface-3) ${p}%)`;
 }
 
 /** Mute button + level slider (desktop only). */
@@ -455,7 +470,8 @@ function VolumeControl({
         max={100}
         value={Math.round(level * 100)}
         onChange={(e) => onVolume(Number(e.target.value) / 100)}
-        className="h-1 w-24 cursor-pointer appearance-none rounded-full bg-surface-3 accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+        style={{ background: fillTrack(level * 100) }}
+        className="h-1 w-24 cursor-pointer appearance-none rounded-full accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
         aria-label="Volume"
       />
     </div>
