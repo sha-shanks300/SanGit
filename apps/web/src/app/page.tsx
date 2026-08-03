@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TopNav } from "@/components/top-nav";
@@ -7,42 +7,92 @@ import { buttonClasses, Eyebrow } from "@/components/ui";
 import { DownloadApp } from "@/components/download-app";
 import { LogoMark } from "@/components/logo";
 import heroImage from "./logo/HeroSection.png";
+import branchingShot from "./logo/Tree.png";
+import commitShot from "./logo/Commit.png";
+import sharingShot from "./logo/Share.png";
 
-const STEPS = [
-  {
-    n: "01",
-    title: "Save like you always do",
-    body: "The tray app watches your FL Studio folders. Hit save and SanGit offers to commit the version. No terminal, no staging, no leaving the DAW.",
-  },
-  {
-    n: "02",
-    title: "Every idea keeps its own lane",
-    body: "Each commit snapshots the .flp and uploads it. The folder is the project, the filename is the branch. Save midnight-drive-vip.flp and you've branched a new direction without touching the original.",
-  },
-  {
-    n: "03",
-    title: "Hear any version, share the best",
-    body: "An mp3 renders the moment FL Studio closes, so every save becomes listenable. Scrub the timeline to hear any take, crown one as Main, and share it with private links that expire.",
-  },
-];
+// The feature showcase — each entry pairs a real product screenshot with the
+// claim it proves. The tray/commit shot is captured on the desktop app, so it
+// stays a labelled placeholder (see `shot`) until that image is dropped in.
+type Feature = {
+  eyebrow: string;
+  title: string;
+  body: string;
+  image: StaticImageData | null;
+  alt?: string;
+  shot?: string;
+};
 
-const DETAILS = [
+const FEATURES: Feature[] = [
   {
     eyebrow: "Branching",
-    title: "Branch without breaking a thing.",
-    body: "No checkout commands to learn. A new .flp name in the folder starts a new branch, forked from the exact version you saved it from, so a bold idea never risks the take you love. The timeline tree shows every lane side by side.",
+    title: "See your whole song as a tree.",
+    body: "Every save becomes a version on its branch. Give the file a new name and a new idea branches off, rooted in the exact take you left behind. See it all two ways: a quiet tree of every branch, or a living graph you can push around.",
+    image: branchingShot,
+    alt: "SanGit's timeline tree: three branches of a project, each with several versions, one crowned Main and another marked most-liked.",
   },
   {
     eyebrow: "Playback",
-    title: "Every version, audible.",
-    body: "Every save becomes a track you can actually play. An mp3 renders the next time FL Studio closes. Scrub the timeline and hear exactly where the song was that night.",
+    title: "Every save is a track you can play.",
+    body: "The moment FL Studio closes, each save turns into sound. Scrub the timeline and hear where the song stood that night. The music follows you from page to page and never stops for a reload.",
+    image: null,
+    shot: "Player bar mid-playback, over the version timeline",
+  },
+  {
+    eyebrow: "Committing",
+    title: "Keep your hands on the keys.",
+    body: "SanGit waits quietly in your tray, watching your project folders. Hit save the way you always do and it offers to keep that version, then tucks it away in the background. No commands to learn, no rhythm to break.",
+    image: commitShot,
+    alt: "SanGit's tray prompt asking to commit the version just saved in FL Studio.",
   },
   {
     eyebrow: "Sharing",
-    title: "Yours until you decide to share.",
-    body: "Your audio streams over short-lived signed URLs. Nothing ever sits on a public bucket. Share links expire, can be revoked, and log every view, so a work-in-progress stays exactly as private as you want.",
+    title: "Share it long before it's done.",
+    body: "No need to wait for the final master. Send any take the moment it moves you, a rough loop or a half-finished drop, straight from the studio. The link fades on its own and answers only to you, so you can get ears on an idea while it's still warm.",
+    image: sharingShot,
+    alt: "SanGit's share manager: private links with view counts, expiry dates, and a revoke control on each.",
   },
 ];
+
+// A captured screenshot in an on-brand frame — hairline border, sharp corners,
+// shown at its natural aspect (the screens vary in shape).
+function ShotFrame({
+  image,
+  alt,
+}: {
+  image: StaticImageData;
+  alt: string;
+}) {
+  return (
+    <div className="overflow-hidden border border-hairline-strong bg-surface-1">
+      <Image
+        src={image}
+        alt={alt}
+        className="h-auto w-full"
+        sizes="(max-width: 768px) 100vw, 600px"
+      />
+    </div>
+  );
+}
+
+// On-brand placeholder plate: surface-1, hairline, sharp corners, with a mono
+// label naming the screenshot that belongs here (used for the tray shot).
+function ShotPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="relative flex aspect-[16/10] w-full items-center justify-center overflow-hidden border border-hairline-strong bg-surface-1">
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-[repeating-linear-gradient(135deg,transparent_0,transparent_11px,rgba(255,255,255,0.02)_11px,rgba(255,255,255,0.02)_12px)]"
+      />
+      <div className="relative flex flex-col items-center gap-2 px-8 text-center">
+        <span className="font-mono text-eyebrow uppercase text-ink-tertiary">
+          Screenshot
+        </span>
+        <span className="max-w-xs text-body-sm text-ink-muted">{label}</span>
+      </div>
+    </div>
+  );
+}
 
 export default async function Home() {
   const supabase = await createClient();
@@ -169,36 +219,36 @@ export default async function Home() {
           </ol>
         </section>
 
-        {/* How it works — a real pipeline, so the numbers mean something */}
+        {/* Feature showcase — strict alternating image/text rows
+            (left/right/left/right). Each screenshot proves its claim; the
+            playback shot stays a placeholder until captured. */}
         <section className="border-b border-hairline py-24">
-          <Eyebrow>How it works</Eyebrow>
-          <div className="mt-12 grid gap-12 md:grid-cols-3 md:gap-8">
-            {STEPS.map((step) => (
-              <div key={step.n} className="border-t border-hairline-strong pt-6">
-                <span className="font-mono text-mono text-ink-tertiary">
-                  {step.n}
-                </span>
-                <h3 className="mt-4 text-card-title text-ink">{step.title}</h3>
-                <p className="mt-3 text-body-sm text-ink-muted">{step.body}</p>
+          <Eyebrow>What you get</Eyebrow>
+          <div className="mt-16 flex flex-col gap-20 md:gap-28">
+            {FEATURES.map((f, i) => (
+              <div
+                key={f.eyebrow}
+                className="grid items-center gap-8 md:grid-cols-2 md:gap-16"
+              >
+                <div className={i % 2 === 1 ? "md:order-2" : undefined}>
+                  {f.image ? (
+                    <ShotFrame image={f.image} alt={f.alt!} />
+                  ) : (
+                    <ShotPlaceholder label={f.shot!} />
+                  )}
+                </div>
+                <div className={i % 2 === 1 ? "md:order-1" : undefined}>
+                  <Eyebrow>{f.eyebrow}</Eyebrow>
+                  <h3 className="mt-4 max-w-md text-display-md text-ink">
+                    {f.title}
+                  </h3>
+                  <p className="mt-5 max-w-lg text-body text-ink-muted">
+                    {f.body}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
-        </section>
-
-        {/* Spec sheet — editorial rows, eyebrow left / claim right */}
-        <section className="py-8">
-          {DETAILS.map((d) => (
-            <div
-              key={d.eyebrow}
-              className="grid gap-4 border-b border-hairline py-10 last:border-b-0 md:grid-cols-[220px_1fr] md:gap-8"
-            >
-              <Eyebrow>{d.eyebrow}</Eyebrow>
-              <div className="max-w-2xl">
-                <h3 className="text-card-title text-ink">{d.title}</h3>
-                <p className="mt-3 text-body text-ink-muted">{d.body}</p>
-              </div>
-            </div>
-          ))}
         </section>
 
         {/* CTA band */}
