@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { buttonClasses } from "@/components/ui";
 import { NavDownload } from "@/components/nav-download";
+import { ProfileMenu } from "@/components/profile-menu";
 import { LogoMark } from "@/components/logo";
 
 function Wordmark() {
@@ -20,6 +21,14 @@ export async function TopNav() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const { data: profile } = user
+    ? await supabase
+        .from("profiles")
+        .select("username, display_name, avatar_url")
+        .eq("id", user.id)
+        .maybeSingle()
+    : { data: null };
 
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-hairline bg-canvas/90 backdrop-blur">
@@ -42,11 +51,15 @@ export async function TopNav() {
               lone accent, so Download stays quiet there (DESIGN.md: one accent). */}
           <NavDownload variant={user ? "primary" : "tertiary"} label="Download" />
           {user ? (
-            <form action="/auth/signout" method="post">
-              <button className={buttonClasses("secondary")} type="submit">
-                Sign out
-              </button>
-            </form>
+            profile ? (
+              <ProfileMenu profile={profile} />
+            ) : (
+              <form action="/auth/signout" method="post">
+                <button className={buttonClasses("secondary")} type="submit">
+                  Sign out
+                </button>
+              </form>
+            )
           ) : (
             <>
               <Link href="/login" className={buttonClasses("secondary")}>
