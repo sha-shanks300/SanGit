@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { MyArtists } from "@/components/my-artists";
 import { ProjectsSectionHeading } from "@/components/section-heading";
 import type { PlayerTrack } from "@/components/player-context";
 
@@ -107,28 +108,40 @@ export function ProjectRows({ artistName }: { artistName?: string | null }) {
     );
   }
 
+  // Listener layout (no projects yet): the setup guide and My artists sit
+  // side by side, so a listen-first user can collapse setup and still have
+  // their shelf. On upload the layout flips (below) and My artists drops to
+  // the bottom.
   if (projects.length === 0) {
     return (
       <section className="mt-12">
-        <OnboardingChecklist />
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:items-start">
+          <OnboardingChecklist collapsible />
+          <MyArtists />
+        </div>
       </section>
     );
   }
 
+  // Producer layout: the project list, then My artists pinned at the very
+  // bottom, separate from the projects.
   return (
-    <section className="mt-12">
-      <ProjectsSectionHeading title="Projects" count={projects.length} />
-      <div className="mt-6 flex flex-col gap-3">
-        {projects.map((p) => (
-          <ProjectRow
-            key={p.id}
-            project={p}
-            href={`/dashboard/projects/${p.id}`}
-            playQueue={queue}
-            playIndex={indexByProject.get(p.id) ?? -1}
-          />
-        ))}
-      </div>
-    </section>
+    <>
+      <section className="mt-12">
+        <ProjectsSectionHeading title="Projects" count={projects.length} />
+        <div className="mt-6 flex flex-col gap-3">
+          {projects.map((p) => (
+            <ProjectRow
+              key={p.id}
+              project={p}
+              href={`/dashboard/projects/${p.id}`}
+              playQueue={queue}
+              playIndex={indexByProject.get(p.id) ?? -1}
+            />
+          ))}
+        </div>
+      </section>
+      <MyArtists className="mt-10" />
+    </>
   );
 }

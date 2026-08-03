@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Profile } from "@/lib/database.types";
 import { buttonClasses } from "@/components/ui";
 import { ShareProfileButton } from "@/components/share-profile-button";
+import { FollowButton } from "@/components/follow-button";
 
 /**
  * Profile masthead (SoundCloud proportions): a short, wide banner is the whole
@@ -33,12 +34,17 @@ export function ProfileHeader({
           : { background: "linear-gradient(180deg, #3c3c3c, #030303 64%)" }
       }
     >
-      {isOwner && (
+      {isOwner ? (
         <div className="absolute right-4 top-4 z-10 flex flex-wrap items-center gap-2 bg-canvas/40 p-1.5 backdrop-blur-md">
           <ShareProfileButton username={profile.username} />
           <Link href="/settings/profile" className={buttonClasses("secondary")}>
             Edit profile
           </Link>
+        </div>
+      ) : (
+        // Non-owner (incl. signed-out) on /u/[username]: private follow toggle.
+        <div className="absolute right-4 top-4 z-10 flex items-center gap-2 bg-canvas/40 p-1.5 backdrop-blur-md">
+          <FollowButton profileId={profile.id} username={profile.username} />
         </div>
       )}
 

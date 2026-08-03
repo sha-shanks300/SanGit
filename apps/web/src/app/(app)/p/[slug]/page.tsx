@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getPublicProject } from "@/lib/public-project";
 import { TopNav } from "@/components/top-nav";
 import { ProjectView } from "@/components/project-view";
-import { PlayerProvider } from "@/components/player-provider";
 import { PublicTrackView } from "@/components/public-track-view";
 import { ProjectSigninGate } from "@/components/project-signin-gate";
 import { CopyLinkButton } from "@/components/copy-link-button";
@@ -119,7 +118,7 @@ export default async function PublicProjectPage({
   // The read-only tree/graph view (visitor experience — owners manage from the
   // dashboard).
   return (
-    <PlayerProvider>
+    <>
       <TopNav />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10">
         <ProjectView
@@ -127,8 +126,9 @@ export default async function PublicProjectPage({
           isOwner={false}
           headerActions={<CopyLinkButton path={`/p/${project.slug}`} />}
           artistName={profile?.display_name || profile?.username || null}
+          artistUsername={profile?.username || null}
         />
       </main>
-    </PlayerProvider>
+    </>
   );
 }

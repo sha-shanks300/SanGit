@@ -33,12 +33,16 @@ export function ProjectView({
   isOwner,
   headerActions,
   artistName,
+  artistUsername,
 }: {
   projectId: string;
   isOwner: boolean;
   headerActions?: React.ReactNode;
   /** Producer's name — the "artist" line in the player bar. */
   artistName?: string | null;
+  /** Producer's @username — makes the bar's artist line link to their profile
+   *  (listener view only). */
+  artistUsername?: string | null;
 }) {
   const { project, branches, versions, loading, refetch } =
     useProject(projectId);
@@ -103,6 +107,7 @@ export function ProjectView({
         projectId: project.id,
         projectTitle: project.title,
         artistName,
+        artistUsername,
         artworkUrl: project.artwork_url,
         isOwner,
         mainVersionId,
@@ -111,7 +116,7 @@ export function ProjectView({
         favoriteProjectId: isOwner ? undefined : project.id,
       },
     }));
-  }, [project, versions, branches, isOwner, mainVersionId, setMain, artistName]);
+  }, [project, versions, branches, isOwner, mainVersionId, setMain, artistName, artistUsername]);
 
   // Keep the live queue fresh (Set-as-Main, a render finishing) without
   // restarting audio; only re-homes prev/next if this project owns the
