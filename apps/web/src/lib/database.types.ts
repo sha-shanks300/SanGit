@@ -86,6 +86,12 @@ export type Favorite = {
   created_at: string;
 }
 
+export type Follow = {
+  follower_id: string;
+  followee_id: string;
+  created_at: string;
+}
+
 export type Comment = {
   id: string;
   version_id: string;
@@ -134,6 +140,7 @@ export type Database = {
       versions: TableDef<Version>;
       reactions: TableDef<Reaction>;
       favorites: TableDef<Favorite>;
+      follows: TableDef<Follow>;
       comments: TableDef<Comment>;
       share_links: TableDef<ShareLink>;
       project_flp_keys: TableDef<ProjectFlpKey>;

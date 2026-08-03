@@ -16,6 +16,11 @@ export type TrackMeta = {
   projectTitle: string;
   /** The producer's name — shown as the "artist" line under the title. */
   artistName?: string | null;
+  /** The producer's @username — when set on a listener track, the artist line
+   *  links to /u/[username] (audio keeps playing across the client nav). Omit
+   *  to render plain text (owner bars, or share pages with no reachable
+   *  profile). */
+  artistUsername?: string | null;
   artworkUrl: string | null;
   isOwner: boolean;
   mainVersionId: string | null;

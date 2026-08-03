@@ -22,6 +22,10 @@ export type SharedProjectPayload = {
       username: string;
       display_name: string | null;
       avatar_url: string | null;
+      /** True when the owner has a reachable public profile (≥1 public
+       *  project). Gates whether the player's artist line links out — a private
+       *  share shouldn't bounce visitors to an empty profile. */
+      has_public_content?: boolean;
     } | null;
   };
   branches: Branch[];
@@ -97,6 +101,10 @@ export function SharedProjectView({
           projectTitle: project.title,
           artistName:
             project.owner?.display_name || project.owner?.username || null,
+          // Link out only when the profile is worth landing on (public content).
+          artistUsername: project.owner?.has_public_content
+            ? project.owner.username
+            : null,
           artworkUrl: project.artwork_url,
           isOwner: false,
           mainVersionId: project.main_version_id,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Button, StatusBadge } from "@/components/ui";
 import { ProjectArtwork } from "@/components/project-artwork";
 import { FavoriteButton } from "@/components/favorite-button";
@@ -91,6 +92,10 @@ export function PlayerBar() {
       ? `${meta.projectTitle} · ${meta.branchName}`
       : meta.projectTitle
     : meta.artistName ?? "";
+  // Listeners can click through to the artist's profile without stopping the
+  // audio (the player lives above the router, so the nav is a client swap).
+  const artistHref =
+    !meta.isOwner && meta.artistUsername ? `/u/${meta.artistUsername}` : null;
 
   return (
     <>
@@ -116,11 +121,7 @@ export function PlayerBar() {
                 <p className="truncate text-body-sm text-ink">{songName}</p>
                 {statusBadge}
               </div>
-              {artist && (
-                <p className="truncate font-mono text-caption text-ink-tertiary">
-                  {artist}
-                </p>
-              )}
+              {artist && <ArtistLine artist={artist} href={artistHref} />}
             </div>
           </div>
 
@@ -272,11 +273,7 @@ export function PlayerBar() {
               <div className="flex items-center gap-2">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <p className="truncate text-card-title text-ink">{songName}</p>
-                  {artist && (
-                    <p className="truncate font-mono text-caption text-ink-tertiary">
-                      {artist}
-                    </p>
-                  )}
+                  {artist && <ArtistLine artist={artist} href={artistHref} />}
                 </div>
                 <div className="flex shrink-0 items-center">
                   {statusBadge && <span className="mr-1 shrink-0">{statusBadge}</span>}
@@ -334,6 +331,22 @@ export function PlayerBar() {
         </div>
       )}
     </>
+  );
+}
+
+/** The "artist" subtitle. A listener track with a reachable profile links to
+ *  /u/[username] (client nav — audio keeps playing); otherwise plain text. */
+function ArtistLine({ artist, href }: { artist: string; href: string | null }) {
+  const base = "truncate font-mono text-caption text-ink-tertiary";
+  return href ? (
+    <Link
+      href={href}
+      className={cn(base, "block w-fit max-w-full underline-offset-2 hover:text-ink hover:underline")}
+    >
+      {artist}
+    </Link>
+  ) : (
+    <p className={base}>{artist}</p>
   );
 }
 
