@@ -71,6 +71,18 @@ export async function GET(
       .eq("id", project.user_id)
       .maybeSingle();
 
+    // Does the owner have a reachable public profile? Gates whether the
+    // player's artist line links out from this private share.
+    let ownerHasPublicContent = false;
+    if (owner) {
+      const { count } = await admin
+        .from("projects")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", project.user_id)
+        .eq("is_public", true);
+      ownerHasPublicContent = (count ?? 0) > 0;
+    }
+
     // Storage paths are owner-only knowledge — never hand them to viewers.
     const strip = (v: Version): Version => ({
       ...v,
@@ -82,7 +94,9 @@ export async function GET(
       title: project.title,
       artwork_url: project.artwork_url,
       main_version_id: project.main_version_id,
-      owner: owner ?? null,
+      owner: owner
+        ? { ...owner, has_public_content: ownerHasPublicContent }
+        : null,
     };
 
     // Main-only: hand over just the Main version (or the latest ready one).

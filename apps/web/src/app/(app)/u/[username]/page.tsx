@@ -6,7 +6,6 @@ import { TopNav } from "@/components/top-nav";
 import { ProjectsSectionHeading } from "@/components/section-heading";
 import { ProfileHeader } from "@/components/profile-header";
 import { ProjectRow, type ProjectRowData } from "@/components/project-row";
-import { PlayerProvider } from "@/components/player-provider";
 import type { PlayerTrack } from "@/components/player-context";
 
 export async function generateMetadata({
@@ -98,6 +97,7 @@ export default async function ProfilePage({
           projectId: p.id,
           projectTitle: p.title,
           artistName: profile.display_name || profile.username,
+          artistUsername: profile.username,
           artworkUrl: p.artwork_url,
           isOwner: false,
           mainVersionId: p.main_version_id,
@@ -123,22 +123,21 @@ export default async function ProfilePage({
               Nothing public yet.
             </p>
           ) : (
-            // One provider for the profile's listener player: hover-play a
-            // project's Main from the row, then next/prev across the profile.
-            <PlayerProvider>
-              <div className="mt-6 flex flex-col gap-3">
-                {projects.map((p) => (
-                  <ProjectRow
-                    key={p.id}
-                    project={p}
-                    href={`/p/${p.slug}`}
-                    showVisibility={false}
-                    playQueue={queue}
-                    playIndex={indexByProject.get(p.id) ?? -1}
-                  />
-                ))}
-              </div>
-            </PlayerProvider>
+            // The (app) group provider powers this listener player: hover-play a
+            // project's Main from the row, then next/prev across the profile —
+            // and playback carries in from wherever the visitor arrived.
+            <div className="mt-6 flex flex-col gap-3">
+              {projects.map((p) => (
+                <ProjectRow
+                  key={p.id}
+                  project={p}
+                  href={`/p/${p.slug}`}
+                  showVisibility={false}
+                  playQueue={queue}
+                  playIndex={indexByProject.get(p.id) ?? -1}
+                />
+              ))}
+            </div>
           )}
         </section>
       </main>
