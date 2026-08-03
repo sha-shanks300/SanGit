@@ -11,3 +11,6 @@ dist/
 .env
 .env.local
 *.local.json
+
+# private drafts / idea notes (never committed)
+*.draft.md
