@@ -7,9 +7,9 @@ import { buttonClasses, Eyebrow } from "@/components/ui";
 import { DownloadApp } from "@/components/download-app";
 import { LogoMark } from "@/components/logo";
 import heroImage from "./logo/HeroSection.png";
-import branchingShot from "./logo/Tree.png";
+import branchingShot from "./logo/Tree.webp";
 import commitShot from "./logo/Commit.png";
-import sharingShot from "./logo/Share.png";
+import sharingShot from "./logo/Share.webp";
 
 // The feature showcase — each entry pairs a real product screenshot with the
 // claim it proves. The tray/commit shot is captured on the desktop app, so it
@@ -21,6 +21,9 @@ type Feature = {
   image: StaticImageData | null;
   alt?: string;
   shot?: string;
+  /** Extra classes for the image frame — e.g. a max-width so a lower-res
+   *  capture renders at (or below) its native size and stays crisp. */
+  frameClass?: string;
 };
 
 const FEATURES: Feature[] = [
@@ -44,6 +47,9 @@ const FEATURES: Feature[] = [
     body: "SanGit waits quietly in your tray, watching your project folders. Hit save the way you always do and it offers to keep that version, then tucks it away in the background. No commands to learn, no rhythm to break.",
     image: commitShot,
     alt: "SanGit's tray prompt asking to commit the version just saved in FL Studio.",
+    // Lower-res capture (495px wide) — cap the frame at native width so it's
+    // shown 1:1 instead of upscaled to fill the column.
+    frameClass: "max-w-[495px]",
   },
   {
     eyebrow: "Sharing",
@@ -51,6 +57,9 @@ const FEATURES: Feature[] = [
     body: "No need to wait for the final master. Send any take the moment it moves you, a rough loop or a half-finished drop, straight from the studio. The link fades on its own and answers only to you, so you can get ears on an idea while it's still warm.",
     image: sharingShot,
     alt: "SanGit's share manager: private links with view counts, expiry dates, and a revoke control on each.",
+    // Cap the width to roughly match the commit shot so the frames read as a
+    // set; ml-auto right-aligns it (image sits on the right in this row).
+    frameClass: "max-w-[495px] ml-auto",
   },
 ];
 
@@ -59,17 +68,25 @@ const FEATURES: Feature[] = [
 function ShotFrame({
   image,
   alt,
+  className,
 }: {
   image: StaticImageData;
   alt: string;
+  className?: string;
 }) {
   return (
-    <div className="overflow-hidden border border-hairline-strong bg-surface-1">
+    <div
+      className={`overflow-hidden border border-hairline-strong bg-surface-1 ${className ?? ""}`}
+    >
+      {/* unoptimized: these captures are small (≈10–70 KB) and detail-heavy,
+          so we skip next/image's re-compression and serve the crisp source
+          as-is — the browser downscales it, which stays sharper than a
+          quality-75 re-encode. */}
       <Image
         src={image}
         alt={alt}
         className="h-auto w-full"
-        sizes="(max-width: 768px) 100vw, 600px"
+        unoptimized
       />
     </div>
   );
@@ -232,7 +249,7 @@ export default async function Home() {
               >
                 <div className={i % 2 === 1 ? "md:order-2" : undefined}>
                   {f.image ? (
-                    <ShotFrame image={f.image} alt={f.alt!} />
+                    <ShotFrame image={f.image} alt={f.alt!} className={f.frameClass} />
                   ) : (
                     <ShotPlaceholder label={f.shot!} />
                   )}
