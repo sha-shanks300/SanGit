@@ -6,6 +6,7 @@ import { TopNav } from "@/components/top-nav";
 import { ProjectView } from "@/components/project-view";
 import { PlayerProvider } from "@/components/player-provider";
 import { PublicTrackView } from "@/components/public-track-view";
+import { ProjectSigninGate } from "@/components/project-signin-gate";
 import { CopyLinkButton } from "@/components/copy-link-button";
 
 export async function generateMetadata({
@@ -102,8 +103,21 @@ export default async function PublicProjectPage({
     );
   }
 
-  // Full-history mode: the read-only tree/graph view (visitor experience —
-  // owners manage from the dashboard).
+  // Full-history mode: the full tree is shared publicly, but only with
+  // signed-in listeners. Anonymous visitors get a teaser + sign-in gate that
+  // returns them straight here (owners are always signed in, so !user is the
+  // gate). Privacy for specific people is handled by share links, not this.
+  if (!user) {
+    return (
+      <>
+        <TopNav />
+        <ProjectSigninGate project={project} profile={profile} />
+      </>
+    );
+  }
+
+  // The read-only tree/graph view (visitor experience — owners manage from the
+  // dashboard).
   return (
     <PlayerProvider>
       <TopNav />

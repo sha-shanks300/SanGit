@@ -139,6 +139,8 @@ h3 {
   --animate-tree-node-exit: tree-node-exit 320ms ease forwards;
   /* Player bar entrance — slides up from below when a track first loads. */
   --animate-player-slide-up: player-slide-up 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Signed-out project gate: the sign-in prompt eases up over the teaser. */
+  --animate-signin-gate-rise: signin-gate-rise 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
 
   @keyframes tree-fade-in {
     from {
@@ -156,6 +158,13 @@ h3 {
   @keyframes player-slide-up {
     from {
       transform: translateY(100%);
+      opacity: 0;
+    }
+  }
+
+  @keyframes signin-gate-rise {
+    from {
+      transform: translateY(28px);
       opacity: 0;
     }
   }
