@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import type { Version } from "@/lib/database.types";
 import { getPublicProject } from "@/lib/public-project";
 import { TopNav } from "@/components/top-nav";
 import { ProjectView } from "@/components/project-view";
@@ -56,14 +57,14 @@ export default async function PublicProjectPage({
   if (!project.is_public && !isOwner) notFound();
 
   // Main-only mode (default): one track — the Main version when it's
-  // playable, else the latest ready one. The full tree stays private.
+  // playable, else the latest ready one. The full tree stays private. Full
+  // rows so the hero can cue them into the shared player (bar + overlay).
   if (!project.show_history) {
-    let version: { id: string; display_name: string | null; file_name: string; duration_secs: number | null } | null =
-      null;
+    let version: Version | null = null;
     if (project.main_version_id) {
       const { data: main } = await supabase
         .from("versions")
-        .select("id, display_name, file_name, duration_secs, render_status")
+        .select("*")
         .eq("id", project.main_version_id)
         .maybeSingle();
       if (main?.render_status === "ready") version = main;
@@ -71,7 +72,7 @@ export default async function PublicProjectPage({
     if (!version) {
       const { data: latest } = await supabase
         .from("versions")
-        .select("id, display_name, file_name, duration_secs")
+        .select("*")
         .eq("project_id", project.id)
         .eq("render_status", "ready")
         .order("uploaded_at", { ascending: false })
@@ -83,20 +84,18 @@ export default async function PublicProjectPage({
       <>
         <TopNav />
         <PublicTrackView
-          project={project}
+          project={{
+            id: project.id,
+            title: project.title,
+            slug: project.slug,
+            artwork_url: project.artwork_url,
+            main_version_id: project.main_version_id,
+          }}
           producer={{
             username: profile?.username ?? "",
             display_name: profile?.display_name ?? null,
           }}
-          version={
-            version
-              ? {
-                  id: version.id,
-                  name: version.display_name || version.file_name,
-                  duration_secs: version.duration_secs,
-                }
-              : null
-          }
+          version={version}
         />
       </>
     );
