@@ -26,6 +26,7 @@ const mkVersion = (
 ): Version => ({
   id,
   branch_id: "b-main",
+  parent_version_id: null,
   project_id: P,
   user_id: U,
   display_name: name,

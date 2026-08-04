@@ -96,8 +96,9 @@ export async function POST(request: Request) {
   let branchCreated = false;
 
   if (new_branch_name) {
-    // "Commit to branch": the named branch may be new (fork it) or already
-    // exist (append onto it — covers the offline free-text case).
+    // "New branch": always fork a fresh branch. In the open-tree model you
+    // never re-join an existing branch (continuing one is a normal Commit on
+    // that file), so a name that already exists is a collision, not an append.
     const wanted = new_branch_name.trim().slice(0, 120);
     if (!wanted) {
       return NextResponse.json({ error: "new_branch_name is empty" }, { status: 400 });
@@ -111,53 +112,53 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (existing) {
-      branchId = existing.id; // append onto the existing branch
-    } else {
-      // Create a NEW branch that forks from the base branch's current tip — the
-      // new take is a child of your latest save, not a sibling that orphans it.
-      // Base = the sent branch_id (the file's home), else the filename branch.
-      let baseBranchId = branch_id ? await validateBranch(branch_id) : null;
-      if (!baseBranchId) {
-        const { data: fb } = await admin
-          .from("branches")
-          .select("id")
-          .eq("project_id", project_id)
-          .eq("name", filenameBranch)
-          .maybeSingle();
-        baseBranchId = fb?.id ?? null;
-      }
-
-      // The new version isn't inserted until step 2, so the base branch's most
-      // recent version here IS its current tip — fork from it.
-      let forkVersionId: string | null = null;
-      if (baseBranchId) {
-        const { data: tip } = await admin
-          .from("versions")
-          .select("id")
-          .eq("branch_id", baseBranchId)
-          .order("uploaded_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        forkVersionId = tip?.id ?? null;
-      }
-
-      const { data: branch, error } = await admin
-        .from("branches")
-        .insert({
-          project_id,
-          user_id: device.user_id,
-          name: wanted,
-          parent_branch_id: baseBranchId,
-          fork_version_id: forkVersionId,
-        })
-        .select("id")
-        .single();
-      if (error || !branch) {
-        return NextResponse.json({ error: "failed to create branch" }, { status: 500 });
-      }
-      branchId = branch.id;
-      branchCreated = true;
+      return NextResponse.json({ error: "branch name already exists" }, { status: 409 });
     }
+
+    // Fork from the base branch's current tip — the node the file is on — so the
+    // new take is a child of your latest save, not a sibling that orphans it.
+    // Base = the sent branch_id (the file's home), else the filename branch.
+    let baseBranchId = branch_id ? await validateBranch(branch_id) : null;
+    if (!baseBranchId) {
+      const { data: fb } = await admin
+        .from("branches")
+        .select("id")
+        .eq("project_id", project_id)
+        .eq("name", filenameBranch)
+        .maybeSingle();
+      baseBranchId = fb?.id ?? null;
+    }
+
+    // The new version isn't inserted until step 2, so the base branch's most
+    // recent version here IS its current tip — fork from it.
+    let forkVersionId: string | null = null;
+    if (baseBranchId) {
+      const { data: tip } = await admin
+        .from("versions")
+        .select("id")
+        .eq("branch_id", baseBranchId)
+        .order("uploaded_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      forkVersionId = tip?.id ?? null;
+    }
+
+    const { data: branch, error } = await admin
+      .from("branches")
+      .insert({
+        project_id,
+        user_id: device.user_id,
+        name: wanted,
+        parent_branch_id: baseBranchId,
+        fork_version_id: forkVersionId,
+      })
+      .select("id")
+      .single();
+    if (error || !branch) {
+      return NextResponse.json({ error: "failed to create branch" }, { status: 500 });
+    }
+    branchId = branch.id;
+    branchCreated = true;
   } else if (branch_id) {
     // Commit onto a specific existing branch (the file's home, or one picked
     // from the dropdown). Appending — never creates.
@@ -177,10 +178,13 @@ export async function POST(request: Request) {
 
     branchId = existingBranch?.id;
     if (!branchId) {
-      // Best-effort fork point: the branch of the most recent version in the project.
+      // A new .flp filename forks a branch off the project's latest work
+      // (best-effort: we can't observe what it was actually based on). Anchor
+      // both the lane (parent_branch_id) and the node (fork_version_id) to that
+      // most-recent version so its first node isn't orphaned as a root.
       const { data: latest } = await admin
         .from("versions")
-        .select("branch_id")
+        .select("id, branch_id")
         .eq("project_id", project_id)
         .order("uploaded_at", { ascending: false })
         .limit(1)
@@ -193,6 +197,7 @@ export async function POST(request: Request) {
           user_id: device.user_id,
           name: filenameBranch,
           parent_branch_id: latest?.branch_id ?? null,
+          fork_version_id: latest?.id ?? null,
         })
         .select("id")
         .single();
