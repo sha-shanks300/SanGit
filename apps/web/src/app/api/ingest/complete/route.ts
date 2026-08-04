@@ -42,12 +42,25 @@ export async function POST(request: Request) {
   // The branch must belong to this user + project.
   const { data: branch } = await admin
     .from("branches")
-    .select("id, project_id, user_id")
+    .select("id, project_id, user_id, fork_version_id")
     .eq("id", branch_id)
     .single();
   if (!branch || branch.user_id !== device.user_id || branch.project_id !== project_id) {
     return NextResponse.json({ error: "unknown branch" }, { status: 404 });
   }
+
+  // Open-tree parent: continue this branch from its current tip; if the branch
+  // is still empty (this is its first version — a normal commit's first save or
+  // a freshly-forked branch) descend from the point it forked from. Null only
+  // for the very first commit in a project (a root node).
+  const { data: tip } = await admin
+    .from("versions")
+    .select("id")
+    .eq("branch_id", branch_id)
+    .order("uploaded_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const parentVersionId = tip?.id ?? branch.fork_version_id ?? null;
 
   const { data: version, error } = await admin
     .from("versions")
@@ -56,6 +69,7 @@ export async function POST(request: Request) {
       branch_id,
       project_id,
       user_id: device.user_id,
+      parent_version_id: parentVersionId,
       display_name: body.display_name?.slice(0, 120) || null,
       file_name,
       flp_storage_path: storage_path,
