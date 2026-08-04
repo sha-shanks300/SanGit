@@ -100,41 +100,41 @@ export function ProfileHeader({
       </div>
 
       {/* ── Mobile (< sm): stacked below a shorter banner strip ──
-          The identity sits on a warm-charcoal panel (#262020) so it reads as a
+          The identity sits on a light-grey panel (#565656) so it reads as a
           distinct block against the #181818 canvas; each text line gets its own
-          near-black (canvas) box so it pops against the warm panel. */}
+          near-black (canvas) box so it pops against the panel. The avatar is
+          absolutely positioned so it straddles the banner/panel seam (half on
+          each) without dragging the panel background up into the banner. */}
       <div className="sm:hidden">
         <div
           className="h-32 w-full overflow-hidden border border-hairline"
           style={bannerStyle}
         />
-        <div className="border-x border-b border-hairline bg-[#262020] px-4 pb-4">
-          <div className="-mt-12 flex flex-col items-start gap-3">
-            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-canvas bg-surface-3">
-              {avatar}
-            </div>
+        <div className="relative border-x border-b border-hairline bg-[#565656] px-4 pb-4 pt-16">
+          <div className="absolute -top-12 left-4 h-24 w-24 overflow-hidden rounded-full border-2 border-canvas bg-surface-3">
+            {avatar}
+          </div>
 
-            <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5">
-              <div className="w-fit max-w-full bg-canvas px-3 py-1">
-                <h1 className="truncate text-headline text-ink">{name}</h1>
-              </div>
+          <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5">
+            <div className="w-fit max-w-full bg-canvas px-3 py-1">
+              <h1 className="truncate text-headline text-ink">{name}</h1>
+            </div>
+            <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
+              <p className="truncate font-mono text-body-sm text-ink/70">
+                @{profile.username}
+              </p>
+            </div>
+            {profile.bio && (
               <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
-                <p className="truncate font-mono text-body-sm text-ink/70">
-                  @{profile.username}
+                <p className="line-clamp-2 text-body-sm text-ink/85">
+                  {profile.bio}
                 </p>
               </div>
-              {profile.bio && (
-                <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
-                  <p className="line-clamp-2 text-body-sm text-ink/85">
-                    {profile.bio}
-                  </p>
-                </div>
-              )}
-            </div>
+            )}
+          </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              {renderActions(true)}
-            </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {renderActions(true)}
           </div>
         </div>
       </div>
