@@ -46,17 +46,24 @@ export function ProfileHeader({
     </span>
   );
 
-  const actions = isOwner ? (
-    <>
-      <ShareProfileButton username={profile.username} />
-      <Link href="/settings/profile" className={buttonClasses("secondary")}>
-        Edit profile
-      </Link>
-    </>
-  ) : (
-    // Non-owner (incl. signed-out): private follow toggle.
-    <FollowButton profileId={profile.id} username={profile.username} />
-  );
+  // `accent` gives the mobile panel's Follow the Rosso Corsa treatment; the
+  // desktop overlay passes nothing and keeps the plain secondary button.
+  const renderActions = (accent = false) =>
+    isOwner ? (
+      <>
+        <ShareProfileButton username={profile.username} />
+        <Link href="/settings/profile" className={buttonClasses("secondary")}>
+          Edit profile
+        </Link>
+      </>
+    ) : (
+      // Non-owner (incl. signed-out): private follow toggle.
+      <FollowButton
+        profileId={profile.id}
+        username={profile.username}
+        accent={accent}
+      />
+    );
 
   return (
     <>
@@ -66,7 +73,7 @@ export function ProfileHeader({
         style={bannerStyle}
       >
         <div className="absolute right-4 top-4 z-10 flex flex-wrap items-center gap-2 bg-canvas/40 p-1.5 backdrop-blur-md">
-          {actions}
+          {renderActions()}
         </div>
 
         <div className="flex h-full items-center gap-6 p-6">
@@ -92,28 +99,43 @@ export function ProfileHeader({
         </div>
       </div>
 
-      {/* ── Mobile (< sm): stacked below a shorter banner strip ── */}
+      {/* ── Mobile (< sm): stacked below a shorter banner strip ──
+          The identity sits on a warm-charcoal panel (#262020) so it reads as a
+          distinct block against the #181818 canvas; each text line gets its own
+          near-black (canvas) box so it pops against the warm panel. */}
       <div className="sm:hidden">
         <div
           className="h-32 w-full overflow-hidden border border-hairline"
           style={bannerStyle}
         />
-        <div className="-mt-12 flex flex-col gap-3">
-          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-canvas bg-surface-3">
-            {avatar}
-          </div>
+        <div className="border-x border-b border-hairline bg-[#262020] px-4 pb-4">
+          <div className="-mt-12 flex flex-col items-start gap-3">
+            <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-canvas bg-surface-3">
+              {avatar}
+            </div>
 
-          <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="truncate text-headline text-ink">{name}</h1>
-            <p className="truncate font-mono text-body-sm text-ink-subtle">
-              @{profile.username}
-            </p>
-            {profile.bio && (
-              <p className="line-clamp-2 text-body-sm text-ink/85">{profile.bio}</p>
-            )}
-          </div>
+            <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5">
+              <div className="w-fit max-w-full bg-canvas px-3 py-1">
+                <h1 className="truncate text-headline text-ink">{name}</h1>
+              </div>
+              <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
+                <p className="truncate font-mono text-body-sm text-ink/70">
+                  @{profile.username}
+                </p>
+              </div>
+              {profile.bio && (
+                <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
+                  <p className="line-clamp-2 text-body-sm text-ink/85">
+                    {profile.bio}
+                  </p>
+                </div>
+              )}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {renderActions(true)}
+            </div>
+          </div>
         </div>
       </div>
     </>
