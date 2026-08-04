@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/ui";
 import { FavoriteButton } from "@/components/favorite-button";
 import { ProjectArtwork } from "@/components/project-artwork";
 import { ArtworkPlayButton } from "@/components/artwork-play-button";
+import { OpenInPlaceLink } from "@/components/open-in-place-link";
 import type { PlayerTrack } from "@/components/player-context";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ export function ProjectRow({
   playQueue,
   playIndex = -1,
   variant = "owner",
+  openInPlace = false,
 }: {
   project: ProjectRowData;
   href: string;
@@ -46,6 +48,10 @@ export function ProjectRow({
   /** "listener" gets the compact mobile row (public profile); default keeps the
    *  full stats row everywhere (owner dashboard). */
   variant?: "owner" | "listener";
+  /** Main-only projects: a left-click expands the now-playing surface in place
+   *  rather than loading /p/[slug], which would only re-render that same
+   *  surface. `href` still backs new-tab and copy-link. Needs `playQueue`. */
+  openInPlace?: boolean;
 }) {
   const branches = project.branches?.[0]?.count;
   const versions = project.versions?.[0]?.count;
@@ -74,11 +80,11 @@ export function ProjectRow({
       />
     );
 
-  return (
-    <Link
-      href={href}
-      className="block rounded-lg border border-hairline bg-surface-1 transition-colors hover:border-hairline-strong hover:bg-surface-2"
-    >
+  const rowClassName =
+    "block rounded-lg border border-hairline bg-surface-1 transition-colors hover:border-hairline-strong hover:bg-surface-2";
+
+  const body = (
+    <>
       {/* Compact listener row — mobile only. Fixed height so the square cover
           fills it edge to edge (no leftover space beside the art). */}
       {listener && (
@@ -131,6 +137,23 @@ export function ProjectRow({
           </div>
         </div>
       </div>
+    </>
+  );
+
+  // Main-only rows expand the now-playing surface in place; every other row
+  // navigates. Both are real links, so the href still backs new-tab/copy-link.
+  return openInPlace && playQueue ? (
+    <OpenInPlaceLink
+      href={href}
+      queue={playQueue}
+      queueIndex={playIndex}
+      className={rowClassName}
+    >
+      {body}
+    </OpenInPlaceLink>
+  ) : (
+    <Link href={href} className={rowClassName}>
+      {body}
     </Link>
   );
 }
