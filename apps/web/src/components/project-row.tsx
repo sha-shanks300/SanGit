@@ -54,7 +54,7 @@ export function ProjectRow({
   // project's creation for projects with no versions embedded.
   const releaseDate = project.latest?.[0]?.uploaded_at ?? project.created_at;
 
-  const artwork = (className: string) =>
+  const artwork = (className: string, activeIndicator = false) =>
     playQueue && playIndex >= 0 ? (
       <ArtworkPlayButton
         projectId={project.id}
@@ -63,6 +63,7 @@ export function ProjectRow({
         queue={playQueue}
         queueIndex={playIndex}
         className={className}
+        activeIndicator={activeIndicator}
       />
     ) : (
       <ProjectArtwork
@@ -82,7 +83,7 @@ export function ProjectRow({
           fills it edge to edge (no leftover space beside the art). */}
       {listener && (
         <div className="flex h-[68px] items-stretch sm:hidden">
-          {artwork("h-full aspect-square shrink-0 border-r border-hairline")}
+          {artwork("h-full aspect-square shrink-0 border-r border-hairline", true)}
           <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3.5">
             <div className="min-w-0">
               <h2 className="truncate text-body-sm font-medium text-ink">

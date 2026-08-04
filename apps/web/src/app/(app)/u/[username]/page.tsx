@@ -111,11 +111,7 @@ export default async function ProfilePage({
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10 pb-28">
-        {/* On mobile the masthead is a stacked block, so a closing hairline +
-            breathing room set it apart from the project list below. */}
-        <div className="border-b border-hairline pb-6 sm:border-b-0 sm:pb-0">
-          <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
-        </div>
+        <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
 
         <section className="mt-8 sm:mt-12">
           <ProjectsSectionHeading
