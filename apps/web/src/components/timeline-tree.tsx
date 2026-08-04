@@ -74,12 +74,17 @@ function computeLayout(branches: Branch[], versions: Version[]): Layout {
     byBranchChrono.set(v.branch_id, list);
   }
 
-  // The version a branch forked from (explicit anchor, else timestamp guess).
+  // The version a branch forked from. Prefer the first node's recorded parent
+  // (open-tree ancestry); else the branch's fork anchor; else the timestamp
+  // guess (nearest parent-branch node just older than the child's first) for
+  // rows created before either was recorded.
   const anchorVersionId = (b: Branch): string | null => {
+    const first = byBranchChrono.get(b.id)?.[0];
+    if (first?.parent_version_id && versionById.has(first.parent_version_id))
+      return first.parent_version_id;
     if (b.fork_version_id && versionById.has(b.fork_version_id)) return b.fork_version_id;
     if (!b.parent_branch_id) return null;
     const parentList = byBranchChrono.get(b.parent_branch_id);
-    const first = byBranchChrono.get(b.id)?.[0];
     if (!parentList?.length || !first) return null;
     const ft = timeOf(first);
     let anchor: Version | null = null;
@@ -155,10 +160,8 @@ function computeLayout(branches: Branch[], versions: Version[]): Layout {
   }
 
   // Fork connectors: from the version the branch forked off -> first node of
-  // the child branch. Prefer the explicit fork_version_id (a Branch & commit
-  // forks off the tip's PARENT, i.e. a sibling of the tip); fall back to the
-  // timestamp guess (nearest parent node just older than the child's first)
-  // for branches created before fork_version_id existed.
+  // the child branch, using the same anchor resolution as the column placement
+  // above (recorded parent, else fork anchor, else timestamp guess).
   const nodeById = new Map(nodes.map((n) => [n.version.id, n]));
   const forks: Layout["forks"] = [];
   for (const b of branches) {
@@ -166,9 +169,8 @@ function computeLayout(branches: Branch[], versions: Version[]): Layout {
     const laneNodes = byBranch.get(b.id);
     const first = laneNodes?.[laneNodes.length - 1]; // rightmost = oldest
     if (!first) continue;
-    let anchor: NodePos | undefined = b.fork_version_id
-      ? nodeById.get(b.fork_version_id)
-      : undefined;
+    const aId = anchorVersionId(b);
+    let anchor: NodePos | undefined = aId ? nodeById.get(aId) : undefined;
     if (!anchor) {
       const parentNodes = byBranch.get(b.parent_branch_id) ?? [];
       anchor = parentNodes.find((p) => p.x > first.x);
