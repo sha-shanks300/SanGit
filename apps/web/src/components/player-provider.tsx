@@ -140,6 +140,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const jumpTo = useCallback((i: number) => {
+    const q = queueRef.current;
+    if (i < 0 || i >= q.length || i === indexRef.current) return;
+    autoplayRef.current = true;
+    setIndex(i);
+  }, []);
+
   const toggle = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -235,6 +242,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     () => ({
       current,
       currentId,
+      queue,
+      index,
       playing,
       buffering,
       volume,
@@ -244,6 +253,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       hasNext,
       play,
       cue,
+      jumpTo,
       syncQueue,
       toggle,
       seekTo,
@@ -257,6 +267,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     [
       current,
       currentId,
+      queue,
+      index,
       playing,
       buffering,
       volume,
@@ -266,6 +278,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       hasNext,
       play,
       cue,
+      jumpTo,
       syncQueue,
       toggle,
       seekTo,
