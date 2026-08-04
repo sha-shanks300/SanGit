@@ -8,6 +8,7 @@ import { DownloadApp } from "@/components/download-app";
 import { LogoMark } from "@/components/logo";
 import heroImage from "./logo/HeroSection.png";
 import branchingShot from "./logo/Tree.webp";
+import playbackShot from "./logo/Player.webp";
 import commitShot from "./logo/Commit.png";
 import sharingShot from "./logo/Share.webp";
 
@@ -38,8 +39,10 @@ const FEATURES: Feature[] = [
     eyebrow: "Playback",
     title: "Every save is a track you can play.",
     body: "The moment FL Studio closes, each save turns into sound. Scrub the timeline and hear where the song stood that night. The music follows you from page to page and never stops for a reload.",
-    image: null,
-    shot: "Player bar mid-playback, over the version timeline",
+    image: playbackShot,
+    alt: "SanGit's full-screen now-playing view: a track playing with its artwork, scrubber, transport controls, and the up-next queue.",
+    // Cap to match the other shots; ml-auto right-aligns it (image-right row).
+    frameClass: "max-w-[495px] ml-auto",
   },
   {
     eyebrow: "Committing",
@@ -169,6 +172,38 @@ export default async function Home() {
             so no idea is ever lost and any version is one click from sharing.
           </p>
         </section>
+
+        {/* Feature showcase — strict alternating image/text rows
+            (left/right/left/right), each screenshot proving its claim. */}
+        <section className="border-b border-hairline py-24">
+          <Eyebrow>What you get</Eyebrow>
+          <div className="mt-16 flex flex-col gap-20 md:gap-28">
+            {FEATURES.map((f, i) => (
+              <div
+                key={f.eyebrow}
+                className="grid items-center gap-8 md:grid-cols-2 md:gap-16"
+              >
+                <div className={i % 2 === 1 ? "md:order-2" : undefined}>
+                  {f.image ? (
+                    <ShotFrame image={f.image} alt={f.alt!} className={f.frameClass} />
+                  ) : (
+                    <ShotPlaceholder label={f.shot!} />
+                  )}
+                </div>
+                <div className={i % 2 === 1 ? "md:order-1" : undefined}>
+                  <Eyebrow>{f.eyebrow}</Eyebrow>
+                  <h3 className="mt-4 max-w-md text-display-md text-ink">
+                    {f.title}
+                  </h3>
+                  <p className="mt-5 max-w-lg text-body text-ink-muted">
+                    {f.body}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* Get started — the four-step onboarding checklist that every
             "Get started" button scrolls to. Static: the landing is
             logged-out only, so there's no live progress to track. */}
@@ -234,38 +269,6 @@ export default async function Home() {
               </div>
             </li>
           </ol>
-        </section>
-
-        {/* Feature showcase — strict alternating image/text rows
-            (left/right/left/right). Each screenshot proves its claim; the
-            playback shot stays a placeholder until captured. */}
-        <section className="border-b border-hairline py-24">
-          <Eyebrow>What you get</Eyebrow>
-          <div className="mt-16 flex flex-col gap-20 md:gap-28">
-            {FEATURES.map((f, i) => (
-              <div
-                key={f.eyebrow}
-                className="grid items-center gap-8 md:grid-cols-2 md:gap-16"
-              >
-                <div className={i % 2 === 1 ? "md:order-2" : undefined}>
-                  {f.image ? (
-                    <ShotFrame image={f.image} alt={f.alt!} className={f.frameClass} />
-                  ) : (
-                    <ShotPlaceholder label={f.shot!} />
-                  )}
-                </div>
-                <div className={i % 2 === 1 ? "md:order-1" : undefined}>
-                  <Eyebrow>{f.eyebrow}</Eyebrow>
-                  <h3 className="mt-4 max-w-md text-display-md text-ink">
-                    {f.title}
-                  </h3>
-                  <p className="mt-5 max-w-lg text-body text-ink-muted">
-                    {f.body}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
         </section>
 
         {/* CTA band */}
