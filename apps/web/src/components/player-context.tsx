@@ -30,6 +30,11 @@ export type TrackMeta = {
   onSetMain?: (v: Version) => void;
   /** Listener-only project favourite (RLS path). Omit on token share pages. */
   favoriteProjectId?: string;
+  /** Project slug — set only where this project has a reachable public page,
+   *  so the now-playing hero can offer a copy-link. Omitted on token share
+   *  pages (there the token IS the link, and the project may be private) and
+   *  on owner surfaces (which carry the richer Share dialog already). */
+  slug?: string | null;
   /** Like backend for the version heart (token routes on share pages). */
   interactionsApi?: InteractionsApi;
   /** Signed-URL minting endpoint; defaults to the owner `/api/audio/:id`. */
@@ -53,6 +58,16 @@ export type PlayerContextValue = {
   loop: boolean;
   hasPrev: boolean;
   hasNext: boolean;
+  /** True while a page renders the now-playing surface itself (the Main-only
+   *  public page), where the persistent bar would just duplicate what's
+   *  already filling the screen. Set by that page, cleared on unmount. */
+  barHidden: boolean;
+  setBarHidden: (v: boolean) => void;
+  /** Is the full-screen now-playing surface open (desktop overlay / mobile
+   *  sheet)? Lifted out of the bar so a project row can play a track and expand
+   *  straight into it, with no navigation. */
+  expanded: boolean;
+  setExpanded: (v: boolean) => void;
   /** Start a queue at `index` and play (a user gesture). */
   play: (queue: PlayerTrack[], index: number) => void;
   /** Load a queue at `index` without playing — no-op if something's already

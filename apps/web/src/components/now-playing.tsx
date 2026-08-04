@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui";
 import { Input, Button } from "@/components/ui";
 import { ProjectArtwork } from "@/components/project-artwork";
 import { FavoriteButton } from "@/components/favorite-button";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import {
   defaultInteractionsApi,
   type InteractionsApi,
@@ -42,45 +43,50 @@ import { cn, formatDate, formatDuration } from "@/lib/utils";
  * DESIGN.md — no ambient backdrop.
  */
 
-/* ───────────────────────── desktop overlay ─────────────────────── */
+/* ────────────────────── shared now-playing surface ─────────────── */
 
-export function NowPlayingDesktop({
+/**
+ * The whole now-playing composition: eyebrow header + action cluster, the
+ * centered hero column, and the toggled Up-next/Comments rail.
+ *
+ * Mounted two ways, deliberately identical: as the full-screen overlay
+ * ({@link NowPlayingDesktop}, which adds the fixed backdrop and a collapse
+ * chevron) and as the entire Main-only public page (`/p/[slug]`, which has
+ * nothing to close so it passes no `onClose`). Anything styled here lands on
+ * both — that's the point, and why the page must not restyle it locally.
+ */
+export function NowPlayingSurface({
   track,
   onClose,
   closeRef,
+  className,
+  queue,
+  index,
+  heading,
 }: {
   track: PlayerTrack;
-  onClose: () => void;
+  /** Overlay mount only — renders the collapse chevron. Absent on the page. */
+  onClose?: () => void;
   closeRef?: React.Ref<HTMLButtonElement>;
+  className?: string;
+  /** Page mount: the queue to start when this track isn't the loaded one. */
+  queue?: PlayerTrack[];
+  index?: number;
+  /** Semantics only (identical styling): h1 when this surface IS the page. */
+  heading?: "h1" | "h2";
 }) {
-  const player = usePlayer();
-  const { time, duration } = usePlayerProgress();
   const [railOpen, setRailOpen] = useState(false);
   const { version, meta } = track;
-  const playable = version.render_status === "ready";
-  const { songName, artist } = trackLabels(track);
-  const artistHref =
-    !meta.isOwner && meta.artistUsername ? `/u/${meta.artistUsername}` : null;
-  const api = meta.interactionsApi ?? defaultInteractionsApi;
-
-  const seekValue = duration ? Math.round((time / duration) * 1000) : 0;
-  const seek = (e: React.ChangeEvent<HTMLInputElement>) =>
-    player.seekTo(Number(e.target.value) / 1000);
+  // Only the overlay closes on a backdrop click, so only it needs its
+  // interactive clusters to stop propagation.
+  const stop = onClose ? (e: React.MouseEvent) => e.stopPropagation() : undefined;
 
   return (
-    // Opaque canvas: clicking the empty void closes; interactive clusters below
-    // stop propagation so controls never dismiss the overlay.
-    <div
-      className="fixed inset-0 z-[60] hidden animate-now-playing-in flex-col bg-canvas sm:flex"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Now playing"
-      onClick={onClose}
-    >
-      {/* header — eyebrow left; owner/listener action, queue toggle, close right */}
+    <div className={cn("flex flex-col", className)}>
+      {/* header — eyebrow left; owner/listener action, share, queue, close right */}
       <div
-        className="flex h-16 shrink-0 items-center justify-between px-8"
-        onClick={(e) => e.stopPropagation()}
+        className="flex h-16 shrink-0 items-center justify-between px-6 sm:px-8"
+        onClick={stop}
       >
         <span className="font-mono text-eyebrow uppercase tracking-[0.28px] text-ink-subtle">
           Now playing
@@ -95,6 +101,11 @@ export function NowPlayingDesktop({
           ) : meta.favoriteProjectId ? (
             <FavoriteButton projectId={meta.favoriteProjectId} bare />
           ) : null}
+          {/* Share belongs in the header, not under the transport: the hero
+              column is height-bound (42vh artwork + credits + scrubber +
+              transport) and one more row pushes the transport off a short
+              viewport. */}
+          {meta.slug && <CopyLinkButton path={`/p/${meta.slug}`} bare />}
           <button
             onClick={() => setRailOpen((o) => !o)}
             aria-pressed={railOpen}
@@ -107,91 +118,208 @@ export function NowPlayingDesktop({
           >
             <QueueIcon size={20} />
           </button>
-          <button
-            ref={closeRef}
-            onClick={onClose}
-            aria-label="Close now playing"
-            title="Collapse"
-            className="flex items-center justify-center rounded-md p-2 text-ink-subtle transition-colors hover:text-ink"
-          >
-            <ChevronIcon dir="down" size={22} />
-          </button>
+          {onClose && (
+            <button
+              ref={closeRef}
+              onClick={onClose}
+              aria-label="Close now playing"
+              title="Collapse"
+              className="flex items-center justify-center rounded-md p-2 text-ink-subtle transition-colors hover:text-ink"
+            >
+              <ChevronIcon dir="down" size={22} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Rail sits beside the hero on desktop; on a phone (where this surface is
+          the whole /p/[slug] page) it stacks underneath instead, so the toggle
+          does something at every width. */}
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         {/* ── protagonist: a single centered, symmetric column ── */}
-        <div className="flex min-w-0 flex-1 items-center justify-center px-10 pb-14">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex w-[min(420px,42vh)] flex-col"
-          >
-            <ProjectArtwork
-              projectId={meta.projectId}
-              artworkUrl={meta.artworkUrl}
-              title={meta.projectTitle}
-              className="aspect-square w-full border border-hairline"
-              initialClassName="text-display-xl"
+        <div className="flex min-w-0 flex-1 items-center justify-center px-6 pb-14 sm:px-10">
+          <div onClick={stop} className="flex">
+            <NowPlayingHero
+              track={track}
+              queue={queue}
+              index={index}
+              heading={heading}
+              className="w-[min(420px,42vh)] max-w-full"
             />
-
-            {/* credits — centered */}
-            <div className="mt-9 text-center">
-              <h2 className="truncate text-headline text-ink">{songName}</h2>
-              {artist && (
-                <div className="mt-2 flex justify-center">
-                  <ArtistLine artist={artist} href={artistHref} className="text-body-sm" />
-                </div>
-              )}
-            </div>
-
-            {/* scrubber */}
-            <div className="mt-8 flex items-center gap-3">
-              <span className="w-10 text-right font-mono text-mono tabular-nums text-ink-tertiary">
-                {formatDuration(time)}
-              </span>
-              <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
-              <span className="w-10 font-mono text-mono tabular-nums text-ink-tertiary">
-                {formatDuration(duration)}
-              </span>
-            </div>
-
-            {/* transport — symmetric: like · prev · PLAY · next · repeat */}
-            <div className="mt-8 flex items-center justify-center gap-8">
-              <LikeHeart versionId={version.id} api={api} showCount={false} size={20} />
-              <IconButton label="Previous" onClick={player.prev} disabled={!player.hasPrev} size="lg">
-                <PrevIcon />
-              </IconButton>
-              <PlayToggle
-                playing={player.playing}
-                buffering={player.buffering}
-                playable={playable}
-                onClick={player.toggle}
-                size="xl"
-              />
-              <IconButton label="Next" onClick={player.next} disabled={!player.hasNext} size="lg">
-                <NextIcon />
-              </IconButton>
-              <IconButton
-                label={player.loop ? "Repeat on" : "Repeat off"}
-                onClick={player.toggleLoop}
-                pressed={player.loop}
-                active={player.loop}
-              >
-                <RepeatIcon />
-              </IconButton>
-            </div>
           </div>
         </div>
 
         {/* ── rail: up next / comments — toggled, off by default ── */}
         {railOpen && (
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex w-[360px] shrink-0 border-l border-hairline"
+            onClick={stop}
+            className="flex max-h-[45vh] w-full shrink-0 border-t border-hairline sm:max-h-none sm:w-[360px] sm:border-l sm:border-t-0"
           >
-            <NowPlayingRail track={track} />
+            <NowPlayingRail track={track} active={railOpen} />
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── desktop overlay ─────────────────────── */
+
+export function NowPlayingDesktop({
+  track,
+  onClose,
+  closeRef,
+}: {
+  track: PlayerTrack;
+  onClose: () => void;
+  closeRef?: React.Ref<HTMLButtonElement>;
+}) {
+  return (
+    // Opaque canvas: clicking the empty void closes; the surface's interactive
+    // clusters stop propagation so controls never dismiss the overlay.
+    <div
+      className="fixed inset-0 z-[60] hidden animate-now-playing-in flex-col bg-canvas sm:flex"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Now playing"
+      onClick={onClose}
+    >
+      <NowPlayingSurface
+        track={track}
+        onClose={onClose}
+        closeRef={closeRef}
+        className="min-h-0 flex-1"
+      />
+    </div>
+  );
+}
+
+/* ──────────────────────── shared hero column ───────────────────── */
+
+/**
+ * The protagonist column: oversized artwork, credits, scrubber, transport.
+ * Rendered by the desktop overlay above (which always presents the track the
+ * provider has loaded) and by the Main-only public page, which presents *its
+ * own* track whether or not that track is the one playing.
+ *
+ * That second case is why this isn't simply driven by `usePlayer().current`.
+ * Arriving at /p/[slug] while audio carried in from another page must not make
+ * the page display someone else's song: when `track` isn't the loaded one the
+ * hero becomes a static play affordance — the scrubber shows the version's own
+ * duration and is inert, prev/next are disabled (they belong to whatever queue
+ * IS loaded), and pressing play starts `queue` instead of toggling.
+ */
+export function NowPlayingHero({
+  track,
+  queue,
+  index = 0,
+  className,
+  heading: Heading = "h2",
+  artworkInitialClassName = "text-display-xl",
+}: {
+  track: PlayerTrack;
+  /** Queue to start when this track isn't the loaded one (the page mount).
+   *  Defaults to the track alone. */
+  queue?: PlayerTrack[];
+  index?: number;
+  className?: string;
+  /** h1 on a page that owns the document outline; h2 inside the dialog. */
+  heading?: "h1" | "h2";
+  artworkInitialClassName?: string;
+}) {
+  const player = usePlayer();
+  const { time, duration } = usePlayerProgress();
+  const { version, meta } = track;
+  const playable = version.render_status === "ready";
+  const { songName, artist } = trackLabels(track);
+  const artistHref =
+    !meta.isOwner && meta.artistUsername ? `/u/${meta.artistUsername}` : null;
+  const api = meta.interactionsApi ?? defaultInteractionsApi;
+
+  // "Live" only while this exact version is the one loaded in the provider.
+  const isCurrent = player.currentId === version.id;
+  const shownTime = isCurrent ? time : 0;
+  const shownDuration =
+    isCurrent && duration ? duration : version.duration_secs ?? 0;
+  const seekValue =
+    isCurrent && duration ? Math.round((time / duration) * 1000) : 0;
+  const seek = (e: React.ChangeEvent<HTMLInputElement>) =>
+    player.seekTo(Number(e.target.value) / 1000);
+
+  function onPlay() {
+    if (isCurrent) player.toggle();
+    else player.play(queue ?? [track], queue ? index : 0);
+  }
+
+  return (
+    <div className={cn("flex flex-col", className)}>
+      <ProjectArtwork
+        projectId={meta.projectId}
+        artworkUrl={meta.artworkUrl}
+        title={meta.projectTitle}
+        className="aspect-square w-full border border-hairline"
+        initialClassName={artworkInitialClassName}
+      />
+
+      {/* credits — centered */}
+      <div className="mt-9 text-center">
+        <Heading className="truncate text-headline text-ink">{songName}</Heading>
+        {artist && (
+          <div className="mt-2 flex justify-center">
+            <ArtistLine artist={artist} href={artistHref} className="text-body-sm" />
+          </div>
+        )}
+      </div>
+
+      {/* scrubber */}
+      <div className="mt-8 flex items-center gap-3">
+        <span className="w-10 text-right font-mono text-mono tabular-nums text-ink-tertiary">
+          {formatDuration(shownTime)}
+        </span>
+        <SeekSlider
+          value={seekValue}
+          onChange={seek}
+          disabled={!isCurrent || !playable}
+        />
+        <span className="w-10 font-mono text-mono tabular-nums text-ink-tertiary">
+          {formatDuration(shownDuration)}
+        </span>
+      </div>
+
+      {/* transport — symmetric: like · prev · PLAY · next · repeat */}
+      <div className="mt-8 flex items-center justify-center gap-8">
+        <LikeHeart versionId={version.id} api={api} showCount={false} size={20} />
+        <IconButton
+          label="Previous"
+          onClick={player.prev}
+          disabled={!isCurrent || !player.hasPrev}
+          size="lg"
+        >
+          <PrevIcon />
+        </IconButton>
+        <PlayToggle
+          playing={isCurrent && player.playing}
+          buffering={isCurrent && player.buffering}
+          playable={playable}
+          onClick={onPlay}
+          size="xl"
+        />
+        <IconButton
+          label="Next"
+          onClick={player.next}
+          disabled={!isCurrent || !player.hasNext}
+          size="lg"
+        >
+          <NextIcon />
+        </IconButton>
+        <IconButton
+          label={player.loop ? "Repeat on" : "Repeat off"}
+          onClick={player.toggleLoop}
+          pressed={player.loop}
+          active={player.loop}
+        >
+          <RepeatIcon />
+        </IconButton>
       </div>
     </div>
   );

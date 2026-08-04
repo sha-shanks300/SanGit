@@ -37,7 +37,9 @@ import { cn, formatDuration } from "@/lib/utils";
 export function PlayerBar() {
   const player = usePlayer();
   const { time, duration } = usePlayerProgress();
-  const [expanded, setExpanded] = useState(false);
+  // Lifted to the provider so a project row can play a track and expand
+  // straight into this surface without navigating.
+  const { expanded, setExpanded } = player;
   // Mobile sheet only: is the Up-next/Comments panel slid open? When true the
   // queue takes the lower ~40vh and the player column scales down to fit above
   // it (both animate together). 40vh + scale-0.8 keeps the transport clear of
@@ -79,7 +81,7 @@ export function PlayerBar() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [expanded]);
+  }, [expanded, setExpanded]);
 
   useEffect(() => {
     if (expanded) {
@@ -96,8 +98,9 @@ export function PlayerBar() {
     };
   }, [expanded]);
 
-  // The sheet/overlay have nothing to show without a track.
-  if (!track && expanded) setExpanded(false);
+  // The sheet/overlay have nothing to show without a track. (`expanded` is
+  // derived against the loaded track in the provider, so it's already false
+  // here — this is just the bar's own early out.)
   if (!track) return null;
 
   const { version, meta } = track;
