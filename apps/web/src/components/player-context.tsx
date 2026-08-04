@@ -42,6 +42,10 @@ export type PlayerContextValue = {
   current: PlayerTrack | null;
   /** id of the playing/cued version — cheap signal for hover overlays. */
   currentId: string | null;
+  /** The live queue and the loaded position within it — the now-playing
+   *  overlay renders this as an "up next" list. */
+  queue: PlayerTrack[];
+  index: number;
   playing: boolean;
   buffering: boolean;
   volume: number;
@@ -54,6 +58,8 @@ export type PlayerContextValue = {
   /** Load a queue at `index` without playing — no-op if something's already
    *  loaded, so navigating in never hijacks an in-flight track. */
   cue: (queue: PlayerTrack[], index: number) => void;
+  /** Jump to and play a position in the *current* queue (up-next rows). */
+  jumpTo: (index: number) => void;
   /** Refresh the live queue/meta in place, but only if this queue owns the
    *  currently-loaded track (else the caller is just a bystander page). */
   syncQueue: (queue: PlayerTrack[]) => void;

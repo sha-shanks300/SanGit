@@ -139,6 +139,10 @@ h3 {
   --animate-tree-node-exit: tree-node-exit 320ms ease forwards;
   /* Player bar entrance — slides up from below when a track first loads. */
   --animate-player-slide-up: player-slide-up 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Full-screen now-playing overlay entrance (desktop) — a gentle rise+fade. */
+  --animate-now-playing-in: now-playing-in 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  /* Now-playing equalizer bars on the currently-playing queue row. */
+  --animate-eq: eq-bounce 720ms ease-in-out infinite;
   /* Signed-out project gate: the sign-in prompt eases up over the teaser. */
   --animate-signin-gate-rise: signin-gate-rise 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
 
@@ -166,6 +170,23 @@ h3 {
     from {
       transform: translateY(28px);
       opacity: 0;
+    }
+  }
+
+  @keyframes now-playing-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+
+  @keyframes eq-bounce {
+    0%,
+    100% {
+      transform: scaleY(0.3);
+    }
+    50% {
+      transform: scaleY(1);
     }
   }
 }
