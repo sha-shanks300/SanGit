@@ -54,6 +54,10 @@ export function PlayerBar() {
   const [dragging, setDragging] = useState(false);
   const dragMode = useRef<"open" | "close" | null>(null);
   const dragStart = useRef(0);
+  const dragStartX = useRef(0);
+  // Axis lock for the player-body swipe: undecided until the first few px of
+  // movement pick "v" (drive the sheet down) or "h" (leave it to the scrubber).
+  const dragAxis = useRef<"v" | "h" | null>(null);
   const viewportH = useRef(0);
   const moved = useRef(false);
   const mobileCloseRef = useRef<HTMLButtonElement>(null);
@@ -173,9 +177,53 @@ export function PlayerBar() {
   // Tap anywhere on the player region — but not on a control — dismisses the
   // queue, the way a well-behaved mobile sheet closes on outside-tap.
   function onPlayerAreaClick(e: React.MouseEvent) {
+    if (moved.current) {
+      moved.current = false;
+      return; // swallow the click that trails a swipe
+    }
     if (!sheetRailOpen) return;
     if ((e.target as HTMLElement).closest("button, input")) return;
     setSheetRailOpen(false);
+  }
+
+  // Swipe down anywhere on the player body to dismiss the sheet — same job as
+  // the down-arrow. Controls (buttons) and the scrubber (input) are excluded at
+  // touch-start, and an axis lock lets a horizontal drag fall through so the
+  // scrubber still seeks; only a predominantly-vertical drag moves the sheet.
+  function onPlayerTouchStart(e: React.TouchEvent) {
+    if ((e.target as HTMLElement).closest("button, input")) return;
+    dragMode.current = "close";
+    dragStart.current = e.touches[0].clientY;
+    dragStartX.current = e.touches[0].clientX;
+    dragAxis.current = null;
+    moved.current = false;
+  }
+  function onPlayerTouchMove(e: React.TouchEvent) {
+    if (dragMode.current !== "close") return;
+    const dy = e.touches[0].clientY - dragStart.current;
+    const dx = e.touches[0].clientX - dragStartX.current;
+    if (dragAxis.current === null) {
+      if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+      dragAxis.current = Math.abs(dy) > Math.abs(dx) ? "v" : "h";
+      if (dragAxis.current === "v") {
+        moved.current = true;
+        setDragging(true);
+      }
+    }
+    if (dragAxis.current !== "v") return;
+    setDragY(Math.max(0, dy));
+  }
+  function onPlayerTouchEnd() {
+    if (dragMode.current !== "close") return;
+    dragMode.current = null;
+    const closed = dragAxis.current === "v" && dragY > 120;
+    dragAxis.current = null;
+    setDragging(false);
+    if (closed) {
+      setExpanded(false);
+      setSheetRailOpen(false);
+    }
+    setDragY(0);
   }
 
   const sheetTransform = dragging
@@ -305,7 +353,7 @@ export function PlayerBar() {
 
         {/* ── Mobile mini-bar — tap or drag up to expand ── */}
         <div
-          className="relative flex h-14 touch-none items-center gap-3 px-4 sm:hidden"
+          className="relative flex h-16 touch-none items-center gap-3 px-4 sm:hidden"
           onClick={onBarClick}
           onTouchStart={onBarTouchStart}
           onTouchMove={onBarTouchMove}
@@ -323,12 +371,12 @@ export function PlayerBar() {
             projectId={artwork.projectId}
             artworkUrl={artwork.artworkUrl}
             title={artwork.title}
-            className="h-10 w-10 shrink-0 border border-hairline"
+            className="h-12 w-12 shrink-0 border border-hairline"
             initialClassName="text-body-sm"
           />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-body-sm text-ink">{songName}</p>
-            <p className="font-mono text-caption text-ink-tertiary">
+            <p className="truncate text-body text-ink">{songName}</p>
+            <p className="font-mono text-body-sm text-ink-tertiary">
               {formatDuration(time)} / {formatDuration(duration)}
             </p>
           </div>
@@ -410,6 +458,9 @@ export function PlayerBar() {
         <div
           className="flex min-h-0 flex-1 flex-col items-center justify-center px-6"
           onClick={onPlayerAreaClick}
+          onTouchStart={onPlayerTouchStart}
+          onTouchMove={onPlayerTouchMove}
+          onTouchEnd={onPlayerTouchEnd}
         >
           <div
             className={cn(
