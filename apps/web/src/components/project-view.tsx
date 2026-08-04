@@ -114,6 +114,9 @@ export function ProjectView({
         branchName: branches.find((b) => b.id === v.branch_id)?.name ?? null,
         onSetMain: isOwner ? setMain : undefined,
         favoriteProjectId: isOwner ? undefined : project.id,
+        // Visitors get a copy-link in the overlay; the owner already has the
+        // richer Share dialog in the header, so leave theirs unset.
+        slug: isOwner ? undefined : project.slug,
       },
     }));
   }, [project, versions, branches, isOwner, mainVersionId, setMain, artistName, artistUsername]);

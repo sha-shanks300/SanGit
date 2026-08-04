@@ -4,25 +4,26 @@ import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import type { Version } from "@/lib/database.types";
 import { ProjectArtwork } from "@/components/project-artwork";
-import { CopyLinkButton } from "@/components/copy-link-button";
-import {
-  usePlayer,
-  usePlayerProgress,
-  type PlayerTrack,
-} from "@/components/player-context";
-import { PlayToggle, SeekSlider } from "@/components/player-controls";
-import { formatDuration } from "@/lib/utils";
+import { NowPlayingSurface } from "@/components/now-playing";
+import { usePlayer, type PlayerTrack } from "@/components/player-context";
 
 /**
- * The Main-only public project page (show_history off): one track, big
- * artwork, producer byline — what a visitor from a socials link sees.
+ * The Main-only public project page (show_history off): one track — what a
+ * visitor from a socials link sees.
  *
- * This page lives inside the (app) group, whose layout mounts the shared
- * <PlayerProvider> (persistent bar + full-screen NowPlayingDesktop overlay).
- * So rather than run a private <audio>, the hero cues a one-track listener
- * queue into that provider: the bottom bar appears and clicking it expands the
- * same "now playing" experience owners and full-history listeners already get.
- * `isOwner:false` meta gives the listener (social) chrome, never management.
+ * This page IS the now-playing overlay. It renders {@link NowPlayingSurface} —
+ * the same header, hero column and Up-next/Comments rail the full-screen
+ * overlay renders — rather than a page-shaped variant of it, so the two are
+ * pixel-identical by construction and can't drift. The only difference is
+ * chrome the page can't have: no backdrop, and no collapse chevron (there's
+ * nothing to collapse back into).
+ *
+ * It sits inside the (app) group, whose layout mounts the shared
+ * <PlayerProvider>, so it cues a one-track listener queue into that provider
+ * instead of running a private <audio>. While this page's track is the loaded
+ * one it also hides the persistent bar: the bar would be a second copy of the
+ * player already filling the screen. `isOwner:false` meta gives the listener
+ * (social) chrome, never management.
  */
 export function PublicTrackView({
   project,
@@ -41,7 +42,6 @@ export function PublicTrackView({
   version: Version | null;
 }) {
   const player = usePlayer();
-  const { time, duration } = usePlayerProgress();
 
   const queue = useMemo<PlayerTrack[]>(() => {
     if (!version) return [];
@@ -57,94 +57,72 @@ export function PublicTrackView({
           isOwner: false,
           mainVersionId: project.main_version_id,
           favoriteProjectId: project.id,
+          // This page IS the shareable link — the surface header offers a copy.
+          slug: project.slug,
         },
       },
     ];
   }, [version, project, producer]);
 
-  // Cue into the shared provider so the bar + overlay light up (no autoplay).
-  // A no-op if audio is already carried in from another page, so arriving here
-  // never hijacks an in-flight track.
-  const { cue } = player;
+  // Cue into the shared provider so playback is wired up (no autoplay). A no-op
+  // if audio is already carried in from another page, so arriving here never
+  // hijacks an in-flight track — the hero then presents this page's song
+  // statically while the other one keeps playing.
+  const { cue, setBarHidden } = player;
   useEffect(() => {
     if (queue.length) cue(queue, 0);
   }, [queue, cue]);
 
-  // The hero presents THIS page's track. It's "live" only while this version is
-  // the one actually loaded in the provider (a carried-in track keeps the bar);
-  // otherwise the hero is a static play affordance that starts this queue.
-  const isCurrent = player.currentId === version?.id;
-  const playable = version?.render_status === "ready";
-  const shownTime = isCurrent ? time : 0;
-  const shownDuration =
-    isCurrent && duration ? duration : version?.duration_secs ?? 0;
-  const seekValue =
-    isCurrent && duration ? Math.round((time / duration) * 1000) : 0;
+  // Hide the persistent bar only while THIS page's track is the loaded one.
+  // If something else is playing, the bar is still the only control surface
+  // for it and must stay.
+  const isCurrent = !!version && player.currentId === version.id;
+  useEffect(() => {
+    if (!isCurrent) return;
+    setBarHidden(true);
+    return () => setBarHidden(false);
+  }, [isCurrent, setBarHidden]);
 
-  function onPlay() {
-    if (!version) return;
-    if (isCurrent) player.toggle();
-    else player.play(queue, 0);
-  }
-  function seek(e: React.ChangeEvent<HTMLInputElement>) {
-    player.seekTo(Number(e.target.value) / 1000);
-  }
-
-  return (
-    <main className="flex flex-1 items-center justify-center px-6 py-16 pb-32">
-      <div className="w-full max-w-md">
-        <ProjectArtwork
-          projectId={project.id}
-          artworkUrl={project.artwork_url}
-          title={project.title}
-          className="mx-auto aspect-square w-full max-w-[320px] border border-hairline"
-          initialClassName="text-display-md"
-        />
-
-        <div className="mt-8 text-center">
-          <h1 className="truncate text-headline text-ink">{project.title}</h1>
-          <p className="mt-1 text-body-sm text-ink-subtle">
-            by{" "}
-            <Link
-              href={`/u/${producer.username}`}
-              className="text-ink underline underline-offset-2"
-            >
-              {producer.display_name || producer.username}
-            </Link>
-          </p>
-        </div>
-
-        {version ? (
-          <div className="mt-8 flex items-center gap-3">
-            <PlayToggle
-              playing={isCurrent && player.playing}
-              buffering={isCurrent && player.buffering}
-              playable={!!playable}
-              onClick={onPlay}
-              size="lg"
-            />
-            <span className="w-10 text-right font-mono text-mono text-ink-tertiary">
-              {formatDuration(shownTime)}
-            </span>
-            <SeekSlider
-              value={seekValue}
-              onChange={seek}
-              disabled={!isCurrent || !playable}
-            />
-            <span className="w-10 font-mono text-mono text-ink-tertiary">
-              {formatDuration(shownDuration)}
-            </span>
+  // Nothing rendered yet: there's no track to hand the surface, so show the
+  // identity on its own. (A .flp is committed but its mp3 hasn't landed.)
+  if (!queue.length) {
+    return (
+      <main className="flex flex-1 items-center justify-center px-6 py-16">
+        <div className="w-full max-w-[320px]">
+          <ProjectArtwork
+            projectId={project.id}
+            artworkUrl={project.artwork_url}
+            title={project.title}
+            className="aspect-square w-full border border-hairline"
+            initialClassName="text-display-md"
+          />
+          <div className="mt-9 text-center">
+            <h1 className="truncate text-headline text-ink">{project.title}</h1>
+            <p className="mt-2 font-mono text-caption text-ink-tertiary">
+              <Link
+                href={`/u/${producer.username}`}
+                className="underline-offset-2 hover:text-ink hover:underline"
+              >
+                {producer.display_name || producer.username}
+              </Link>
+            </p>
           </div>
-        ) : (
           <p className="mt-8 text-center text-body-sm text-ink-subtle">
             Nothing to play yet — check back soon.
           </p>
-        )}
-
-        <div className="mt-8 flex justify-center">
-          <CopyLinkButton path={`/p/${project.slug}`} />
         </div>
-      </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="flex min-h-0 flex-1 flex-col">
+      <NowPlayingSurface
+        track={queue[0]}
+        queue={queue}
+        heading="h1"
+        className="min-h-0 flex-1"
+      />
     </main>
   );
 }

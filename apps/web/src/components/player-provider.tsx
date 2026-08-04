@@ -28,6 +28,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const [volume, setVolumeState] = useState(1);
   const [muted, setMuted] = useState(false);
   const [loop, setLoop] = useState(false);
+  const [barHidden, setBarHidden] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const current = queue[index] ?? null;
   const currentId = current?.version.id ?? null;
@@ -251,6 +253,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       loop,
       hasPrev,
       hasNext,
+      barHidden,
+      setBarHidden,
+      // Derived, not synced: with no loaded track there is nothing to expand
+      // into, so the surface can never be open. Saves a set-state round-trip
+      // when the queue empties out.
+      expanded: current ? expanded : false,
+      setExpanded,
       play,
       cue,
       jumpTo,
@@ -276,6 +285,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
       loop,
       hasPrev,
       hasNext,
+      barHidden,
+      setBarHidden,
+      expanded,
+      setExpanded,
       play,
       cue,
       jumpTo,
@@ -321,7 +334,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
           }
         }}
       />
-      <PlayerBar />
+      {/* The Main-only public page renders the now-playing surface as the page
+          itself, so the bar (and the overlay it expands into) would duplicate
+          what's already on screen. */}
+      {!barHidden && <PlayerBar />}
       </PlayerProgressContext.Provider>
     </PlayerContext.Provider>
   );
