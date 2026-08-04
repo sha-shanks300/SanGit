@@ -15,6 +15,7 @@ import {
   NextIcon,
   PlayToggle,
   PrevIcon,
+  QueueIcon,
   RepeatIcon,
   SeekSlider,
   VolumeControl,
@@ -37,6 +38,12 @@ export function PlayerBar() {
   const player = usePlayer();
   const { time, duration } = usePlayerProgress();
   const [expanded, setExpanded] = useState(false);
+  // Mobile sheet only: is the Up-next/Comments panel slid open? When true the
+  // queue takes the lower ~40vh and the player column scales down to fit above
+  // it (both animate together). 40vh + scale-0.8 keeps the transport clear of
+  // the queue even on short (~667px) phones. Always reset to closed as the
+  // sheet closes, so every re-open starts with the full-size player.
+  const [sheetRailOpen, setSheetRailOpen] = useState(false);
 
   // ── Mobile sheet gesture model ──
   // One px offset drives the sheet transform: 0 = fully open, viewport height =
@@ -61,7 +68,10 @@ export function PlayerBar() {
   useEffect(() => {
     if (!expanded) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setExpanded(false);
+      if (e.key === "Escape") {
+        setExpanded(false);
+        setSheetRailOpen(false);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -153,8 +163,19 @@ export function PlayerBar() {
     if (dragMode.current !== "close") return;
     dragMode.current = null;
     setDragging(false);
-    if (dragY > 120) setExpanded(false);
+    if (dragY > 120) {
+      setExpanded(false);
+      setSheetRailOpen(false);
+    }
     setDragY(0);
+  }
+
+  // Tap anywhere on the player region — but not on a control — dismisses the
+  // queue, the way a well-behaved mobile sheet closes on outside-tap.
+  function onPlayerAreaClick(e: React.MouseEvent) {
+    if (!sheetRailOpen) return;
+    if ((e.target as HTMLElement).closest("button, input")) return;
+    setSheetRailOpen(false);
   }
 
   const sheetTransform = dragging
@@ -356,27 +377,55 @@ export function PlayerBar() {
               <FavoriteButton projectId={meta.favoriteProjectId} bare />
             ) : null}
           </div>
-          <button
-            ref={mobileCloseRef}
-            onClick={() => setExpanded(false)}
-            aria-label="Close player"
-            className="absolute right-3 top-1.5 p-2 text-ink-subtle transition-colors hover:text-ink"
-          >
-            <ChevronIcon dir="down" size={20} />
-          </button>
+          <div className="absolute right-2 top-1.5 flex items-center gap-0.5">
+            <button
+              onClick={() => setSheetRailOpen((o) => !o)}
+              aria-pressed={sheetRailOpen}
+              aria-label="Toggle up next and comments"
+              className={cn(
+                "p-2 transition-colors",
+                sheetRailOpen ? "text-ink" : "text-ink-subtle hover:text-ink"
+              )}
+            >
+              <QueueIcon size={20} />
+            </button>
+            <button
+              ref={mobileCloseRef}
+              onClick={() => {
+                setExpanded(false);
+                setSheetRailOpen(false);
+              }}
+              aria-label="Close player"
+              className="p-2 text-ink-subtle transition-colors hover:text-ink"
+            >
+              <ChevronIcon dir="down" size={20} />
+            </button>
+          </div>
         </div>
 
-        {/* artwork + credits + transport — a centred, symmetric column */}
-        <div className="flex shrink-0 flex-col items-center gap-7 px-6 pt-3">
-          <ProjectArtwork
-            projectId={artwork.projectId}
-            artworkUrl={artwork.artworkUrl}
-            title={artwork.title}
-            className="aspect-square w-[58vw] max-w-[260px] border border-hairline"
-            initialClassName="text-display-lg"
-          />
+        {/* Player region — fills the space above the queue and re-centres as it
+            shrinks. Tapping it (outside a control) dismisses an open queue. The
+            inner column scales down as one unit when the queue opens, keeping
+            the whole player — transport included — on screen, just smaller. */}
+        <div
+          className="flex min-h-0 flex-1 flex-col items-center justify-center px-6"
+          onClick={onPlayerAreaClick}
+        >
+          <div
+            className={cn(
+              "flex w-full flex-col items-center gap-7 origin-center transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              sheetRailOpen ? "scale-[0.8]" : "scale-100"
+            )}
+          >
+            <ProjectArtwork
+              projectId={artwork.projectId}
+              artworkUrl={artwork.artworkUrl}
+              title={artwork.title}
+              className="aspect-square w-[58vw] max-w-[260px] border border-hairline"
+              initialClassName="text-display-lg"
+            />
 
-          <div className="w-full max-w-[360px]">
+            <div className="w-full max-w-[360px]">
             {/* credits — centred */}
             <div className="text-center">
               <p className="truncate text-card-title text-ink">{songName}</p>
@@ -424,12 +473,22 @@ export function PlayerBar() {
                 <RepeatIcon />
               </IconButton>
             </div>
+            </div>
           </div>
         </div>
 
-        {/* up next / comments */}
-        <div className="mt-5 flex min-h-0 flex-1 border-t border-hairline">
-          <NowPlayingRail track={track} />
+        {/* Queue region — slides up from the bottom as it grows to ~42vh; the
+            player above scales to fit. The rail stays mounted so the collapse
+            animates cleanly, and overflow-hidden clips it to the animated
+            height. */}
+        <div
+          className={cn(
+            "flex shrink-0 overflow-hidden transition-[height] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            sheetRailOpen && "border-t border-hairline"
+          )}
+          style={{ height: sheetRailOpen ? "40vh" : "0px" }}
+        >
+          <NowPlayingRail track={track} active={sheetRailOpen} />
         </div>
       </div>
 

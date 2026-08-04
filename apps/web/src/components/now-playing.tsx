@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StatusBadge } from "@/components/ui";
 import { Input, Button } from "@/components/ui";
 import { ProjectArtwork } from "@/components/project-artwork";
@@ -200,8 +200,17 @@ export function NowPlayingDesktop({
 /* ───────────────────────── shared rail ─────────────────────────── */
 
 /** Segmented Up-next / Comments panel — shared by the desktop overlay and the
- *  mobile sheet. Fills its parent's height and scrolls internally. */
-export function NowPlayingRail({ track }: { track: PlayerTrack }) {
+ *  mobile sheet. Fills its parent's height and scrolls internally. `active`
+ *  (the mobile sheet's queue-open flag) drives the auto-scroll-to-current in
+ *  {@link QueueList}; it defaults false so the desktop overlay — which passes
+ *  nothing — keeps its original behaviour untouched. */
+export function NowPlayingRail({
+  track,
+  active = false,
+}: {
+  track: PlayerTrack;
+  active?: boolean;
+}) {
   const [tab, setTab] = useState<"queue" | "comments">("queue");
   const api = track.meta.interactionsApi ?? defaultInteractionsApi;
 
@@ -216,7 +225,7 @@ export function NowPlayingRail({ track }: { track: PlayerTrack }) {
         </RailTab>
       </div>
       {tab === "queue" ? (
-        <QueueList />
+        <QueueList active={active} />
       ) : (
         <CommentsPanel versionId={track.version.id} api={api} />
       )}
@@ -251,8 +260,22 @@ function RailTab({
 
 /* ───────────────────────── up-next queue ───────────────────────── */
 
-function QueueList() {
+function QueueList({ active = false }: { active?: boolean }) {
   const { queue, index, jumpTo, currentId, playing } = usePlayer();
+  const currentRef = useRef<HTMLLIElement>(null);
+
+  // When the panel becomes visible (or the current track changes while open),
+  // bring the playing row into view so "up next" actually starts where you are.
+  // Deferred past the sheet's ~300ms open animation so the scroll container has
+  // its full height before we scroll within it.
+  useEffect(() => {
+    if (!active) return;
+    const t = setTimeout(
+      () => currentRef.current?.scrollIntoView({ block: "center" }),
+      320
+    );
+    return () => clearTimeout(t);
+  }, [active, currentId]);
 
   if (queue.length <= 1) {
     return (
@@ -269,7 +292,7 @@ function QueueList() {
         const { songName, artist } = trackLabels(t);
         const ready = t.version.render_status === "ready";
         return (
-          <li key={`${t.version.id}-${i}`}>
+          <li key={`${t.version.id}-${i}`} ref={isCurrent ? currentRef : undefined}>
             <button
               onClick={() => jumpTo(i)}
               disabled={i === index}
