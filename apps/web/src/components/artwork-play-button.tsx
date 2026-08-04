@@ -1,6 +1,7 @@
 "use client";
 
 import { ProjectArtwork } from "@/components/project-artwork";
+import { Equalizer } from "@/components/now-playing";
 import { usePlayer, type PlayerTrack } from "@/components/player-context";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ export function ArtworkPlayButton({
   queue,
   queueIndex,
   className,
+  activeIndicator = false,
 }: {
   projectId: string;
   artworkUrl: string | null;
@@ -30,6 +32,9 @@ export function ArtworkPlayButton({
   /** This project's index within `queue`. */
   queueIndex: number;
   className?: string;
+  /** Persistently darken the cover + overlay the equalizer when this project is
+   *  the one playing — so a touch user (no hover) can see it in a list. */
+  activeIndicator?: boolean;
 }) {
   const player = usePlayer();
   const trackId = queue[queueIndex]?.version.id ?? null;
@@ -51,6 +56,14 @@ export function ArtworkPlayButton({
         title={title}
         className="h-full w-full"
       />
+      {/* Persistent "now playing" mark for touch lists: darken + equalizer on
+          the active row's cover, sitting under the hover-play button so hover
+          still reveals the play/pause disc. */}
+      {activeIndicator && isActive && (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-canvas/55">
+          <Equalizer playing={isPlaying} />
+        </span>
+      )}
       <button
         onClick={onClick}
         aria-label={isPlaying ? "Pause" : "Play Main"}
