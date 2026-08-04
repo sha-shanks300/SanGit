@@ -12,9 +12,11 @@ export function ProjectsSectionHeading({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <h2 className="text-headline text-ink">{title}</h2>
+      {/* Smaller on mobile so "Public projects" stays on one line and the count
+          aligns to its baseline instead of floating beside a wrapped title. */}
+      <h2 className="text-card-title text-ink sm:text-headline">{title}</h2>
       {count != null && (
-        <span className="font-mono text-body-sm text-ink-tertiary">
+        <span className="shrink-0 font-mono text-body-sm text-ink-tertiary">
           {count} project{count === 1 ? "" : "s"}
         </span>
       )}

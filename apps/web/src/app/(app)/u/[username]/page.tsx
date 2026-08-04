@@ -111,9 +111,13 @@ export default async function ProfilePage({
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10 pb-28">
-        <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
+        {/* On mobile the masthead is a stacked block, so a closing hairline +
+            breathing room set it apart from the project list below. */}
+        <div className="border-b border-hairline pb-6 sm:border-b-0 sm:pb-0">
+          <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
+        </div>
 
-        <section className="mt-12">
+        <section className="mt-8 sm:mt-12">
           <ProjectsSectionHeading
             title="Public projects"
             count={projects.length > 0 ? projects.length : undefined}
@@ -133,6 +137,7 @@ export default async function ProfilePage({
                   project={p}
                   href={`/p/${p.slug}`}
                   showVisibility={false}
+                  variant="listener"
                   playQueue={queue}
                   playIndex={indexByProject.get(p.id) ?? -1}
                 />
