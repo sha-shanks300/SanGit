@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { DownloadApp } from "@/components/download-app";
 import { cn } from "@/lib/utils";
 
 type ProfileMenuProfile = {
@@ -138,8 +139,9 @@ export function ProfileMenu({ profile }: { profile: ProfileMenuProfile }) {
           </div>
 
           <div className="py-1.5">
-            {/* Mobile-only: primary nav links live inline on desktop (< sm hides
-                them), so surface them here to keep all navigation reachable. */}
+            {/* Mobile-only: primary nav links + Download live inline in the bar
+                on desktop (< sm hides them), so surface them here to keep all
+                navigation reachable. */}
             <div className="sm:hidden">
               <Link
                 href="/dashboard"
@@ -157,6 +159,7 @@ export function ProfileMenu({ profile }: { profile: ProfileMenuProfile }) {
               >
                 Devices
               </Link>
+              <DownloadApp variant="tertiary" label="Download" className={item} />
               <div className="mx-4 my-1.5 border-t border-hairline" />
             </div>
 
