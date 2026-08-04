@@ -1,19 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { Button, StatusBadge } from "@/components/ui";
 import { ProjectArtwork } from "@/components/project-artwork";
 import { FavoriteButton } from "@/components/favorite-button";
+import { defaultInteractionsApi } from "@/components/interactions";
+import { usePlayer, usePlayerProgress } from "@/components/player-context";
 import {
-  defaultInteractionsApi,
-  type InteractionsApi,
-} from "@/components/interactions";
-import {
-  usePlayer,
-  usePlayerProgress,
-  type PlayerTrack,
-} from "@/components/player-context";
+  ArtistLine,
+  ChevronIcon,
+  IconButton,
+  LikeHeart,
+  MainToggle,
+  NextIcon,
+  PlayToggle,
+  PrevIcon,
+  RepeatIcon,
+  SeekSlider,
+  VolumeControl,
+  trackLabels,
+} from "@/components/player-controls";
+import { NowPlayingDesktop, NowPlayingRail } from "@/components/now-playing";
 import { cn, formatDuration } from "@/lib/utils";
 
 /**
@@ -21,23 +28,61 @@ import { cn, formatDuration } from "@/lib/utils";
  * context (all audio/transport/queue state lives in <PlayerProvider>). Renders
  * nothing until a track is loaded.
  *
- * Desktop (`sm:`+) is a three-zone bar in the streaming-player idiom: artwork +
- * track meta pinned far left, transport + scrubber centred, utilities right.
- * Below `sm:` it's a mini-bar that expands into a full-screen now-playing sheet.
+ * Desktop (`sm:`+) is a three-zone bar; clicking the artwork or the expand
+ * chevron opens the full-screen {@link NowPlayingDesktop} overlay. Below `sm:`
+ * it's a mini-bar you tap — or drag up — to reveal a full-screen now-playing
+ * sheet (swipe back down to dismiss).
  */
 export function PlayerBar() {
   const player = usePlayer();
   const { time, duration } = usePlayerProgress();
   const [expanded, setExpanded] = useState(false);
-  // Swipe-down dismissal: the sheet tracks the drag offset and either closes
-  // past the threshold or springs back. `dragging` (state, not the ref —
-  // render reads it) suppresses the spring-back transition mid-drag.
+
+  // ── Mobile sheet gesture model ──
+  // One px offset drives the sheet transform: 0 = fully open, viewport height =
+  // fully closed (only the mini-bar showing). `dragging` (state — render reads
+  // it) suppresses the spring transition mid-drag. Two gestures feed it: an
+  // up-drag on the mini-bar (open) and a down-drag on the sheet header (close).
   const [dragY, setDragY] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const dragStartRef = useRef<number | null>(null);
+  const dragMode = useRef<"open" | "close" | null>(null);
+  const dragStart = useRef(0);
+  const viewportH = useRef(0);
+  const moved = useRef(false);
+  const mobileCloseRef = useRef<HTMLButtonElement>(null);
+  const desktopCloseRef = useRef<HTMLButtonElement>(null);
+  const prevFocus = useRef<HTMLElement | null>(null);
 
   const track = player.current;
-  // The sheet has nothing to show without a track.
+
+  // Esc closes; body scroll locks; focus moves into the dialog and returns to
+  // the trigger on close. Effects are safe to declare before the early return
+  // because their bodies no-op while `expanded` is false.
+  useEffect(() => {
+    if (!expanded) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExpanded(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [expanded]);
+
+  useEffect(() => {
+    if (expanded) {
+      prevFocus.current = document.activeElement as HTMLElement | null;
+      document.body.style.overflow = "hidden";
+      const desktop = window.matchMedia("(min-width: 640px)").matches;
+      (desktop ? desktopCloseRef : mobileCloseRef).current?.focus();
+    } else {
+      document.body.style.overflow = "";
+      prevFocus.current?.focus?.();
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [expanded]);
+
+  // The sheet/overlay have nothing to show without a track.
   if (!track && expanded) setExpanded(false);
   if (!track) return null;
 
@@ -45,6 +90,9 @@ export function PlayerBar() {
   const playable = version.render_status === "ready";
   const { playing, buffering } = player;
   const api = meta.interactionsApi ?? defaultInteractionsApi;
+  const { songName, artist } = trackLabels(track);
+  const artistHref =
+    !meta.isOwner && meta.artistUsername ? `/u/${meta.artistUsername}` : null;
   const artwork = {
     projectId: meta.projectId,
     title: meta.projectTitle,
@@ -56,22 +104,64 @@ export function PlayerBar() {
   }
   const seekValue = duration ? Math.round((time / duration) * 1000) : 0;
 
+  // ── mini-bar: drag up to open ──
+  function onBarTouchStart(e: React.TouchEvent) {
+    if ((e.target as HTMLElement).closest("button")) return;
+    dragMode.current = "open";
+    dragStart.current = e.touches[0].clientY;
+    viewportH.current = window.innerHeight || 800;
+    moved.current = false;
+  }
+  function onBarTouchMove(e: React.TouchEvent) {
+    if (dragMode.current !== "open") return;
+    const up = dragStart.current - e.touches[0].clientY;
+    if (up > 6) {
+      moved.current = true;
+      if (!dragging) setDragging(true);
+    }
+    setDragY(Math.min(viewportH.current, Math.max(0, viewportH.current - Math.max(0, up))));
+  }
+  function onBarTouchEnd() {
+    if (dragMode.current !== "open") return;
+    dragMode.current = null;
+    const opened = moved.current && dragY < viewportH.current * 0.7;
+    setDragging(false);
+    setDragY(0);
+    if (opened) setExpanded(true);
+  }
+  function onBarClick() {
+    // Suppress the click that trails a drag; a clean tap opens.
+    if (moved.current) {
+      moved.current = false;
+      return;
+    }
+    setExpanded(true);
+  }
+
+  // ── sheet header: drag down to close ──
   function onSheetTouchStart(e: React.TouchEvent) {
-    if ((e.target as HTMLElement).closest("input,button,a")) return;
-    dragStartRef.current = e.touches[0].clientY;
+    if ((e.target as HTMLElement).closest("button")) return;
+    dragMode.current = "close";
+    dragStart.current = e.touches[0].clientY;
     setDragging(true);
   }
   function onSheetTouchMove(e: React.TouchEvent) {
-    if (dragStartRef.current == null) return;
-    setDragY(Math.max(0, e.touches[0].clientY - dragStartRef.current));
+    if (dragMode.current !== "close") return;
+    setDragY(Math.max(0, e.touches[0].clientY - dragStart.current));
   }
   function onSheetTouchEnd() {
-    if (dragStartRef.current == null) return;
-    dragStartRef.current = null;
+    if (dragMode.current !== "close") return;
+    dragMode.current = null;
     setDragging(false);
     if (dragY > 120) setExpanded(false);
     setDragY(0);
   }
+
+  const sheetTransform = dragging
+    ? `translateY(${dragY}px)`
+    : expanded
+      ? "translateY(0)"
+      : "translateY(100%)";
 
   const statusBadge =
     version.render_status === "pending" || version.render_status === "rendering" ? (
@@ -80,45 +170,38 @@ export function PlayerBar() {
       <StatusBadge>render failed</StatusBadge>
     ) : null;
 
-  // Owners work at the version level, so their bar names the version (with
-  // project · branch beneath). Listeners get a clean "song" identity: the
-  // project as the title, the producer as the artist — the internal version
-  // name is never revealed to them.
-  const songName = meta.isOwner
-    ? version.display_name || version.file_name
-    : meta.projectTitle;
-  const artist = meta.isOwner
-    ? meta.branchName
-      ? `${meta.projectTitle} · ${meta.branchName}`
-      : meta.projectTitle
-    : meta.artistName ?? "";
-  // Listeners can click through to the artist's profile without stopping the
-  // audio (the player lives above the router, so the nav is a client swap).
-  const artistHref =
-    !meta.isOwner && meta.artistUsername ? `/u/${meta.artistUsername}` : null;
-
   return (
     <>
-      {/* The sheet must NOT live inside this bar: backdrop-blur makes the bar
+      {/* The overlays must NOT live inside this bar: backdrop-blur makes the bar
           a containing block for fixed descendants, which would trap the
           "inset-0" overlay inside the strip. */}
       <div className="fixed inset-x-0 bottom-0 z-50 animate-player-slide-up border-t border-hairline bg-surface-1/95 backdrop-blur">
-        {/* ── Desktop: [meta] · [transport+scrubber] · [utilities] ──
-            content-center (not just items-center): the row block is shorter
-            than the bar, so without it align-content:start pins it to the top. */}
+        {/* ── Desktop: [meta] · [transport+scrubber] · [utilities] ── */}
         <div className="hidden h-[104px] grid-cols-[1fr_auto_1fr] content-center items-center gap-6 px-5 sm:grid">
           {/* left: artwork + title/subtitle + listener like */}
           <div className="flex min-w-0 items-center gap-3">
-            <ProjectArtwork
-              projectId={artwork.projectId}
-              artworkUrl={artwork.artworkUrl}
-              title={artwork.title}
-              className="h-14 w-14 shrink-0 border border-hairline"
-              initialClassName="text-body-sm"
-            />
+            <button
+              onClick={() => setExpanded(true)}
+              aria-label="Open now playing"
+              title="Open now playing"
+              className="shrink-0 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+            >
+              <ProjectArtwork
+                projectId={artwork.projectId}
+                artworkUrl={artwork.artworkUrl}
+                title={artwork.title}
+                className="h-14 w-14 border border-hairline"
+                initialClassName="text-body-sm"
+              />
+            </button>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <p className="truncate text-body-sm text-ink">{songName}</p>
+                <button
+                  onClick={() => setExpanded(true)}
+                  className="truncate text-left text-body-sm text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
+                >
+                  {songName}
+                </button>
                 {statusBadge}
               </div>
               {artist && <ArtistLine artist={artist} href={artistHref} />}
@@ -175,7 +258,7 @@ export function PlayerBar() {
             </div>
           </div>
 
-          {/* right: management (owner) or like (listener) + volume */}
+          {/* right: management (owner) or like (listener) + volume + expand */}
           <div className="flex items-center justify-end gap-3">
             {meta.isOwner
               ? meta.onSetMain &&
@@ -193,13 +276,19 @@ export function PlayerBar() {
               onVolume={player.setVolume}
               onToggleMute={player.toggleMute}
             />
+            <IconButton label="Open now playing" onClick={() => setExpanded(true)}>
+              <ChevronIcon dir="up" size={18} />
+            </IconButton>
           </div>
         </div>
 
-        {/* ── Mobile mini-bar — tap to expand ── */}
+        {/* ── Mobile mini-bar — tap or drag up to expand ── */}
         <div
-          className="relative flex h-14 items-center gap-3 px-4 sm:hidden"
-          onClick={() => setExpanded(true)}
+          className="relative flex h-14 touch-none items-center gap-3 px-4 sm:hidden"
+          onClick={onBarClick}
+          onTouchStart={onBarTouchStart}
+          onTouchMove={onBarTouchMove}
+          onTouchEnd={onBarTouchEnd}
           role="button"
           aria-label="Open now playing"
         >
@@ -235,427 +324,123 @@ export function PlayerBar() {
         </div>
       </div>
 
-      {/* ── Full-screen now-playing sheet (mobile only) ── */}
-      {expanded && (
+      {/* ── Full-screen now-playing sheet (mobile) — always mounted so the
+          transform springs both ways; parked off-screen when closed. ── */}
+      <div
+        className={cn(
+          "fixed inset-0 z-[60] flex flex-col bg-canvas sm:hidden",
+          !dragging && "transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+        )}
+        style={{ transform: sheetTransform }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Now playing"
+        inert={!expanded}
+      >
+        {/* header — grabber centred; owner/listener action left, close right */}
         <div
-          className={cn(
-            "fixed inset-0 z-[60] flex flex-col bg-canvas px-6 pb-10 sm:hidden",
-            !dragging && "transition-transform duration-200"
-          )}
-          style={{ transform: `translateY(${dragY}px)` }}
+          className="relative flex shrink-0 items-center justify-center pt-3 pb-2 touch-none"
           onTouchStart={onSheetTouchStart}
           onTouchMove={onSheetTouchMove}
           onTouchEnd={onSheetTouchEnd}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Now playing"
         >
+          <span className="h-1 w-10 rounded-full bg-surface-4" aria-hidden />
+          <div className="absolute left-2 top-1.5">
+            {meta.isOwner && meta.onSetMain ? (
+              <MainToggle
+                version={version}
+                mainVersionId={meta.mainVersionId}
+                onSetMain={meta.onSetMain}
+              />
+            ) : meta.favoriteProjectId ? (
+              <FavoriteButton projectId={meta.favoriteProjectId} bare />
+            ) : null}
+          </div>
           <button
-            className="self-center p-4 text-ink-subtle"
+            ref={mobileCloseRef}
             onClick={() => setExpanded(false)}
             aria-label="Close player"
+            className="absolute right-3 top-1.5 p-2 text-ink-subtle transition-colors hover:text-ink"
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
-              <path d="M4 7.5l6 5 6-5" />
-            </svg>
+            <ChevronIcon dir="down" size={20} />
           </button>
+        </div>
 
-          <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8">
-            <ProjectArtwork
-              projectId={artwork.projectId}
-              artworkUrl={artwork.artworkUrl}
-              title={artwork.title}
-              className="aspect-square w-full max-w-[320px] border border-hairline"
-              initialClassName="text-display-md"
-            />
+        {/* artwork + credits + transport — a centred, symmetric column */}
+        <div className="flex shrink-0 flex-col items-center gap-7 px-6 pt-3">
+          <ProjectArtwork
+            projectId={artwork.projectId}
+            artworkUrl={artwork.artworkUrl}
+            title={artwork.title}
+            className="aspect-square w-[58vw] max-w-[260px] border border-hairline"
+            initialClassName="text-display-lg"
+          />
 
-            <div className="w-full max-w-[400px]">
-              <div className="flex items-center gap-2">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="truncate text-card-title text-ink">{songName}</p>
-                  {artist && <ArtistLine artist={artist} href={artistHref} />}
+          <div className="w-full max-w-[360px]">
+            {/* credits — centred */}
+            <div className="text-center">
+              <p className="truncate text-card-title text-ink">{songName}</p>
+              {artist && (
+                <div className="mt-1.5 flex justify-center">
+                  <ArtistLine artist={artist} href={artistHref} />
                 </div>
-                <div className="flex shrink-0 items-center">
-                  {statusBadge && <span className="mr-1 shrink-0">{statusBadge}</span>}
-                  <LikeHeart versionId={version.id} api={api} showCount={false} />
-                  {meta.isOwner && meta.onSetMain ? (
-                    <MainToggle
-                      version={version}
-                      mainVersionId={meta.mainVersionId}
-                      onSetMain={meta.onSetMain}
-                    />
-                  ) : meta.favoriteProjectId ? (
-                    <FavoriteButton projectId={meta.favoriteProjectId} bare />
-                  ) : null}
-                </div>
-              </div>
+              )}
+              {statusBadge && <div className="mt-2 flex justify-center">{statusBadge}</div>}
+            </div>
 
-              <div className="mt-6 flex items-center gap-2.5">
-                <span className="w-10 text-right font-mono text-mono tabular-nums text-ink-tertiary">
-                  {formatDuration(time)}
-                </span>
-                <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
-                <span className="w-10 font-mono text-mono tabular-nums text-ink-tertiary">
-                  {formatDuration(duration)}
-                </span>
-              </div>
+            {/* scrubber */}
+            <div className="mt-6 flex items-center gap-2.5">
+              <span className="w-10 text-right font-mono text-mono tabular-nums text-ink-tertiary">
+                {formatDuration(time)}
+              </span>
+              <SeekSlider value={seekValue} onChange={seek} disabled={!playable} />
+              <span className="w-10 font-mono text-mono tabular-nums text-ink-tertiary">
+                {formatDuration(duration)}
+              </span>
+            </div>
 
-              <div className="mt-6 flex items-center justify-center gap-8">
-                <IconButton label="Previous" onClick={player.prev} disabled={!player.hasPrev} size="lg">
-                  <PrevIcon />
-                </IconButton>
-                <PlayToggle
-                  playing={playing}
-                  buffering={buffering}
-                  playable={playable}
-                  onClick={player.toggle}
-                  size="lg"
-                />
-                <IconButton label="Next" onClick={player.next} disabled={!player.hasNext} size="lg">
-                  <NextIcon />
-                </IconButton>
-              </div>
-
-              <div className="mt-6 flex items-center justify-center">
-                <IconButton
-                  label={player.loop ? "Repeat on" : "Repeat off"}
-                  onClick={player.toggleLoop}
-                  pressed={player.loop}
-                  active={player.loop}
-                >
-                  <RepeatIcon />
-                </IconButton>
-              </div>
+            {/* transport — symmetric: like · prev · PLAY · next · repeat */}
+            <div className="mt-6 flex items-center justify-center gap-7">
+              <LikeHeart versionId={version.id} api={api} showCount={false} />
+              <IconButton label="Previous" onClick={player.prev} disabled={!player.hasPrev} size="lg">
+                <PrevIcon />
+              </IconButton>
+              <PlayToggle
+                playing={playing}
+                buffering={buffering}
+                playable={playable}
+                onClick={player.toggle}
+                size="lg"
+              />
+              <IconButton label="Next" onClick={player.next} disabled={!player.hasNext} size="lg">
+                <NextIcon />
+              </IconButton>
+              <IconButton
+                label={player.loop ? "Repeat on" : "Repeat off"}
+                onClick={player.toggleLoop}
+                pressed={player.loop}
+                active={player.loop}
+              >
+                <RepeatIcon />
+              </IconButton>
             </div>
           </div>
         </div>
+
+        {/* up next / comments */}
+        <div className="mt-5 flex min-h-0 flex-1 border-t border-hairline">
+          <NowPlayingRail track={track} />
+        </div>
+      </div>
+
+      {/* ── Full-screen now-playing overlay (desktop) ── */}
+      {expanded && (
+        <NowPlayingDesktop
+          track={track}
+          onClose={() => setExpanded(false)}
+          closeRef={desktopCloseRef}
+        />
       )}
     </>
-  );
-}
-
-/** The "artist" subtitle. A listener track with a reachable profile links to
- *  /u/[username] (client nav — audio keeps playing); otherwise plain text. */
-function ArtistLine({ artist, href }: { artist: string; href: string | null }) {
-  const base = "truncate font-mono text-caption text-ink-tertiary";
-  return href ? (
-    <Link
-      href={href}
-      className={cn(base, "block w-fit max-w-full underline-offset-2 hover:text-ink hover:underline")}
-    >
-      {artist}
-    </Link>
-  ) : (
-    <p className={base}>{artist}</p>
-  );
-}
-
-/* ─────────────────────────── controls ─────────────────────────── */
-
-/** Ghost icon button — greys at rest, brightens on hover, Rosso when active. */
-function IconButton({
-  label,
-  onClick,
-  disabled,
-  pressed,
-  active,
-  size = "md",
-  children,
-}: {
-  label: string;
-  onClick: (e: React.MouseEvent) => void;
-  disabled?: boolean;
-  pressed?: boolean;
-  active?: boolean;
-  size?: "md" | "lg";
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      aria-pressed={pressed}
-      title={label}
-      className={cn(
-        "flex items-center justify-center rounded-md transition-colors disabled:opacity-30",
-        size === "lg" ? "p-2.5" : "p-1.5",
-        active ? "text-primary" : "text-ink-subtle hover:text-ink"
-      )}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** White play/pause disc (streaming idiom) with a buffering spinner. */
-function PlayToggle({
-  playing,
-  buffering,
-  playable,
-  onClick,
-  size,
-}: {
-  playing: boolean;
-  buffering: boolean;
-  playable: boolean;
-  onClick: (e: React.MouseEvent) => void;
-  size: "sm" | "md" | "lg";
-}) {
-  const box = size === "lg" ? "h-14 w-14" : size === "md" ? "h-11 w-11" : "h-10 w-10";
-  const icon = size === "lg" ? 22 : 18;
-  return (
-    <button
-      className={cn(
-        "flex shrink-0 items-center justify-center rounded-full transition-transform",
-        box,
-        playable
-          ? "bg-ink text-canvas hover:scale-105"
-          : "bg-surface-3 text-ink-tertiary"
-      )}
-      onClick={onClick}
-      disabled={!playable}
-      aria-label={playing ? "Pause" : "Play"}
-    >
-      {buffering ? (
-        <svg className="animate-spin" width={icon} height={icon} viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" opacity="0.25" />
-          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-        </svg>
-      ) : playing ? (
-        <PauseIcon size={icon} />
-      ) : (
-        <PlayIcon size={icon} />
-      )}
-    </button>
-  );
-}
-
-/** Shared seek range — sharp track, Rosso fill, yellow focus ring. */
-function SeekSlider({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: number;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  disabled: boolean;
-}) {
-  const pct = value / 10; // value is 0–1000
-  return (
-    <input
-      type="range"
-      min={0}
-      max={1000}
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-      style={{ background: fillTrack(pct) }}
-      className="h-1 flex-1 cursor-pointer appearance-none rounded-full accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
-      aria-label="Seek"
-    />
-  );
-}
-
-/** Two-tone range track: Rosso up to `pct`, surface grey after — the played
- *  portion reads as filled (native range lower-fill isn't stylable in Chrome). */
-function fillTrack(pct: number) {
-  const p = Math.min(100, Math.max(0, pct));
-  return `linear-gradient(to right, var(--primary) ${p}%, var(--surface-3) ${p}%)`;
-}
-
-/** Mute button + level slider (desktop only). */
-function VolumeControl({
-  volume,
-  muted,
-  onVolume,
-  onToggleMute,
-}: {
-  volume: number;
-  muted: boolean;
-  onVolume: (v: number) => void;
-  onToggleMute: () => void;
-}) {
-  const level = muted ? 0 : volume;
-  return (
-    <div className="flex items-center gap-2">
-      <button
-        onClick={onToggleMute}
-        aria-label={muted ? "Unmute" : "Mute"}
-        title={muted ? "Unmute" : "Mute"}
-        className="flex items-center justify-center rounded-md p-1.5 text-ink-subtle transition-colors hover:text-ink"
-      >
-        <VolumeIcon level={level} />
-      </button>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={Math.round(level * 100)}
-        onChange={(e) => onVolume(Number(e.target.value) / 100)}
-        style={{ background: fillTrack(level * 100) }}
-        className="h-1 w-24 cursor-pointer appearance-none rounded-full accent-(--primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f6e500]"
-        aria-label="Volume"
-      />
-    </div>
-  );
-}
-
-/* ──────────────────────────── icons ───────────────────────────── */
-// Feather/Lucide geometry (24-grid) for legible, consistent controls.
-
-function PlayIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M7 4.5v15a1 1 0 0 0 1.53.85l12-7.5a1 1 0 0 0 0-1.7l-12-7.5A1 1 0 0 0 7 4.5z" />
-    </svg>
-  );
-}
-function PauseIcon({ size = 18 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <rect x="6.5" y="4.5" width="3.5" height="15" rx="0.5" />
-      <rect x="14" y="4.5" width="3.5" height="15" rx="0.5" />
-    </svg>
-  );
-}
-function PrevIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <rect x="6" y="5" width="2.4" height="14" rx="0.6" />
-      <path d="M20 6v12a1 1 0 0 1-1.54.84l-9-6a1 1 0 0 1 0-1.68l9-6A1 1 0 0 1 20 6z" />
-    </svg>
-  );
-}
-function NextIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <rect x="15.6" y="5" width="2.4" height="14" rx="0.6" />
-      <path d="M4 6v12a1 1 0 0 0 1.54.84l9-6a1 1 0 0 0 0-1.68l-9-6A1 1 0 0 0 4 6z" />
-    </svg>
-  );
-}
-function RepeatIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <polyline points="17 1 21 5 17 9" />
-      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-      <polyline points="7 23 3 19 7 15" />
-      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-    </svg>
-  );
-}
-function VolumeIcon({ level }: { level: number }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" stroke="none" />
-      {level === 0 ? (
-        <>
-          <line x1="22" y1="9" x2="16" y2="15" />
-          <line x1="16" y1="9" x2="22" y2="15" />
-        </>
-      ) : level < 0.5 ? (
-        <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-      ) : (
-        <>
-          <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-          <path d="M18.5 5.5a9 9 0 0 1 0 13" />
-        </>
-      )}
-    </svg>
-  );
-}
-
-/* ───────────────────────── social / main ──────────────────────── */
-
-/**
- * Heart-like — same snapshot/toggle plumbing as the Interactions panel
- * (sign-in required; disabled for anonymous viewers).
- */
-function LikeHeart({
-  versionId,
-  api,
-  showCount = true,
-}: {
-  versionId: string;
-  api: InteractionsApi;
-  /** Listeners see a bare heart toggle — the count is producer-only. */
-  showCount?: boolean;
-}) {
-  const [viewerId, setViewerId] = useState<string | null>(null);
-  const [likes, setLikes] = useState(0);
-  const [mine, setMine] = useState(false);
-
-  const refetch = useCallback(async () => {
-    const snap = await api.fetch(versionId);
-    setViewerId(snap.viewerId);
-    setLikes(snap.likes);
-    setMine(snap.mine);
-  }, [api, versionId]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch; state lands after await
-    refetch();
-  }, [refetch]);
-
-  async function toggle() {
-    if (!viewerId) return;
-    await api.toggleLike(versionId, !mine);
-    refetch();
-  }
-
-  return (
-    <button
-      onClick={toggle}
-      disabled={!viewerId}
-      aria-pressed={mine}
-      aria-label={mine ? "Unlike" : "Like"}
-      className={cn(
-        "flex items-center gap-1.5 p-2 text-body-sm transition-colors disabled:opacity-50",
-        mine ? "text-primary" : "text-ink-subtle hover:text-ink"
-      )}
-    >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 16 16"
-        fill={mine ? "currentColor" : "none"}
-        stroke="currentColor"
-        strokeWidth="1.4"
-      >
-        <path d="M8 13.6S2.4 9.9 2.4 6.2c0-1.9 1.5-3.4 3.2-3.4 1 0 1.9.5 2.4 1.3.5-.8 1.4-1.3 2.4-1.3 1.7 0 3.2 1.5 3.2 3.4 0 3.7-5.6 7.4-5.6 7.4z" />
-      </svg>
-      {showCount && likes}
-    </button>
-  );
-}
-
-/**
- * Owner-only Main toggle for the sheet's action row: ring/target icon echoing
- * the tree's Main halo. Selected (filled, Rosso) when the playing version is
- * already Main — tapping then is a no-op.
- */
-function MainToggle({
-  version,
-  mainVersionId,
-  onSetMain,
-}: {
-  version: PlayerTrack["version"];
-  mainVersionId: string | null;
-  onSetMain: (v: PlayerTrack["version"]) => void;
-}) {
-  const isMain = version.id === mainVersionId;
-  return (
-    <button
-      onClick={() => !isMain && onSetMain(version)}
-      aria-pressed={isMain}
-      aria-label={isMain ? "Current Main version" : "Set as Main"}
-      className={cn("p-2 transition-colors", isMain ? "text-primary" : "text-ink-subtle")}
-    >
-      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5">
-        <circle cx="9" cy="9" r="6.5" />
-        <circle cx="9" cy="9" r="2.5" fill={isMain ? "currentColor" : "none"} />
-      </svg>
-    </button>
   );
 }
