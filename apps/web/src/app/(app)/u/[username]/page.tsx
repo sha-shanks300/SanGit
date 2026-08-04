@@ -60,6 +60,7 @@ export default async function ProfilePage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const isOwnProfile = user?.id === profile.id;
 
   // NB: versions embed disambiguated — projects↔versions has a second FK via
   // main_version_id (PGRST201).
@@ -102,6 +103,7 @@ export default async function ProfilePage({
           isOwner: false,
           mainVersionId: p.main_version_id,
           favoriteProjectId: p.id,
+          slug: p.slug, // these are public projects — /p/[slug] is shareable
         },
       });
     }
@@ -111,7 +113,7 @@ export default async function ProfilePage({
     <>
       <TopNav />
       <main className="mx-auto w-full max-w-[1280px] flex-1 px-6 py-10 pb-28">
-        <ProfileHeader profile={profile} isOwner={user?.id === profile.id} />
+        <ProfileHeader profile={profile} isOwner={isOwnProfile} />
 
         <section className="mt-8 sm:mt-12">
           <ProjectsSectionHeading
@@ -131,7 +133,22 @@ export default async function ProfilePage({
                 <ProjectRow
                   key={p.id}
                   project={p}
-                  href={`/p/${p.slug}`}
+                  // Rows are the listener's row either way, but the destination
+                  // follows the viewer, not the project: /p/[slug] is the
+                  // visitor surface (it hardcodes isOwner=false, so an owner
+                  // landing there gets a read-only copy of their own project
+                  // with no management). Own profile => manage on the dashboard.
+                  href={
+                    isOwnProfile
+                      ? `/dashboard/projects/${p.id}`
+                      : `/p/${p.slug}`
+                  }
+                  // A visitor clicking a Main-only project gets the now-playing
+                  // surface expanded in place — /p/[slug] renders exactly that
+                  // surface, so navigating there would just reload what's
+                  // already on screen. All-versions rows still navigate, since
+                  // that page has a whole tree the overlay can't show.
+                  openInPlace={!isOwnProfile && !p.show_history}
                   showVisibility={false}
                   variant="listener"
                   playQueue={queue}
