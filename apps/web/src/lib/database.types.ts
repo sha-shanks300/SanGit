@@ -58,6 +58,11 @@ export type Branch = {
 export type Version = {
   id: string;
   branch_id: string;
+  /** The exact version this one descends from (open-tree ancestry, recorded at
+   *  commit time). Null for a project's first commit (a root) and for rows
+   *  created before the parent column existed — both fall back to the
+   *  timestamp/fork-anchor inference in the graph + tree builders. */
+  parent_version_id: string | null;
   project_id: string;
   user_id: string;
   display_name: string | null;

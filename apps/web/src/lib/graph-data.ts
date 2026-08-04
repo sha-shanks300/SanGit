@@ -76,39 +76,47 @@ export function buildGraph(
     };
   });
 
-  const links: GraphLink[] = [];
-
-  for (const list of byBranch.values()) {
-    for (let i = 1; i < list.length; i++) {
-      links.push({ source: list[i - 1].id, target: list[i].id, kind: "chain" });
-    }
-  }
-
   const versionIds = new Set(ordered.map((v) => v.id));
-  for (const b of branches) {
-    const first = byBranch.get(b.id)?.[0];
-    if (!first) continue;
-    // Prefer the explicit fork anchor recorded at branch creation; fall back to
-    // the timestamp guess (last parent-branch version before this branch began)
-    // for branches created before fork_version_id existed.
-    let anchorId: string | null = null;
-    if (b.fork_version_id && versionIds.has(b.fork_version_id)) {
-      anchorId = b.fork_version_id;
-    } else if (b.parent_branch_id) {
-      const parentList = byBranch.get(b.parent_branch_id);
-      if (parentList?.length) {
-        const firstTime = new Date(first.uploaded_at).getTime();
-        const anchor =
-          [...parentList]
-            .reverse()
-            .find((p) => new Date(p.uploaded_at).getTime() < firstTime) ??
-          parentList[0];
-        anchorId = anchor.id;
+  const branchOf = new Map(ordered.map((v) => [v.id, v.branch_id]));
+
+  // Fork anchor for a branch's first node when its parent wasn't recorded
+  // (legacy rows): the explicit fork_version_id, else the timestamp guess (last
+  // parent-branch version saved before this branch began).
+  const forkAnchor = (branchId: string, first: Version): string | null => {
+    const b = branches.find((x) => x.id === branchId);
+    if (!b) return null;
+    if (b.fork_version_id && versionIds.has(b.fork_version_id)) return b.fork_version_id;
+    if (!b.parent_branch_id) return null;
+    const parentList = byBranch.get(b.parent_branch_id);
+    if (!parentList?.length) return null;
+    const firstTime = new Date(first.uploaded_at).getTime();
+    const anchor =
+      [...parentList]
+        .reverse()
+        .find((p) => new Date(p.uploaded_at).getTime() < firstTime) ??
+      parentList[0];
+    return anchor.id;
+  };
+
+  // One edge per version, from its parent. Prefer the recorded parent_version_id
+  // (open-tree ancestry); fall back to the branch chain (previous node), or the
+  // fork anchor for a branch's first node. Same branch => chain, else fork.
+  const links: GraphLink[] = [];
+  for (const list of byBranch.values()) {
+    list.forEach((v, i) => {
+      let parentId: string | null = null;
+      if (v.parent_version_id && versionIds.has(v.parent_version_id)) {
+        parentId = v.parent_version_id;
+      } else if (i > 0) {
+        parentId = list[i - 1].id;
+      } else {
+        parentId = forkAnchor(v.branch_id, v);
       }
-    }
-    if (anchorId && anchorId !== first.id) {
-      links.push({ source: anchorId, target: first.id, kind: "fork" });
-    }
+      if (parentId && parentId !== v.id) {
+        const kind = branchOf.get(parentId) === v.branch_id ? "chain" : "fork";
+        links.push({ source: parentId, target: v.id, kind });
+      }
+    });
   }
 
   return { nodes, links };
