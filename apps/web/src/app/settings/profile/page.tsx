@@ -9,6 +9,7 @@ import { uploadPublicImage } from "@/lib/image-upload";
 import { ImageCropDialog } from "@/components/image-crop-dialog";
 import { DeleteAccountDialog } from "@/components/delete-account-dialog";
 import { Button, Eyebrow, Input, Panel } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 /** Crop mask + baked output size per image kind — matches how the UI renders. */
 const CROP_SPECS = {
@@ -24,6 +25,11 @@ const CROP_SPECS = {
 function sanitizeUsername(v: string) {
   return v.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 30);
 }
+
+/** Bio length ceiling. Enforced here only — `profiles.bio` is plain `text`, so
+ *  bios written before this cap existed stay readable; the editor just asks for
+ *  them to be trimmed on the next save. */
+const BIO_MAX = 100;
 
 export default function ProfileSettingsPage() {
   const router = useRouter();
@@ -129,6 +135,10 @@ export default function ProfileSettingsPage() {
       setError("Username needs at least 3 characters (a-z, 0-9, - or _).");
       return;
     }
+    if (bio.length > BIO_MAX) {
+      setError(`Bio is ${bio.length - BIO_MAX} characters over the ${BIO_MAX} limit.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     setSaved(false);
@@ -155,6 +165,8 @@ export default function ProfileSettingsPage() {
     router.push("/dashboard");
     router.refresh(); // masthead is server-rendered — pick up the new profile
   }
+
+  const bioOver = bio.length > BIO_MAX;
 
   if (loading) {
     return <p className="py-16 text-center text-body-sm text-ink-subtle">Loading…</p>;
@@ -297,15 +309,35 @@ export default function ProfileSettingsPage() {
           <label className="text-caption text-ink-subtle" htmlFor="bio">
             Bio
           </label>
+          {/* Soft cap, not maxLength: a hard stop silently swallows keystrokes,
+              and it can't explain an existing bio that's already over. Typing
+              past BIO_MAX is allowed, the counter goes red, and save is blocked
+              until it's trimmed. */}
           <textarea
             id="bio"
-            className="mt-1 w-full rounded-sm border border-hairline bg-canvas px-4 py-2.5 text-body text-ink placeholder:text-ink-tertiary"
+            className={cn(
+              "mt-1 w-full rounded-sm border bg-canvas px-4 py-2.5 text-body text-ink placeholder:text-ink-tertiary",
+              bioOver ? "border-primary" : "border-hairline"
+            )}
             rows={4}
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             placeholder="Tell people what you make."
-            maxLength={500}
+            aria-describedby="bio-count"
+            aria-invalid={bioOver}
           />
+          <p
+            id="bio-count"
+            aria-live="polite"
+            className={cn(
+              "mt-1 text-right font-mono text-caption",
+              bioOver ? "text-primary" : "text-ink-tertiary"
+            )}
+          >
+            {bio.length}/{BIO_MAX}
+            {bioOver &&
+              ` · ${bio.length - BIO_MAX} over — trim to save`}
+          </p>
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-4">
@@ -321,7 +353,7 @@ export default function ProfileSettingsPage() {
           <div className="flex items-center gap-3">
             {saved && <span className="text-caption text-success">Saved</span>}
             {error && <span className="text-caption text-primary">{error}</span>}
-            <Button onClick={save} disabled={saving}>
+            <Button onClick={save} disabled={saving || bioOver}>
               {saving ? "Saving…" : "Save"}
             </Button>
           </div>
