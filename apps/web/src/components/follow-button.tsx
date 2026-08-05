@@ -79,7 +79,10 @@ export function FollowButton({
       title={following ? "Unfollow" : "Follow"}
       className={cn(
         accent && !following ? buttonClasses("primary") : buttonClasses("secondary"),
-        following && "text-ink-subtle",
+        // Following reads in Rosso Corsa — the same red the un-followed accent
+        // button is filled with, so the state change is a colour swap rather
+        // than a fade to grey.
+        following && "text-primary",
         !ready && "opacity-0"
       )}
     >
