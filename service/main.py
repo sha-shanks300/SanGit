@@ -381,7 +381,6 @@ class App(QObject):
             self.status_window = StatusWindow(
                 is_watching=lambda: self.watching,
                 set_watching=self.set_watching,
-                status_text=self._status_text,
                 get_config=lambda: self.cfg,
                 is_revoked=lambda: self._revoked,
                 get_update_version=lambda: self._update_version,
