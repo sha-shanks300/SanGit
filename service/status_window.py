@@ -46,7 +46,10 @@ class ToggleSwitch(QWidget):
 
     toggled = Signal(bool)  # emitted only for user-initiated flips
 
-    W, H, PAD = 120, 60, 6
+    # The window's one live control, and the only thing worth glancing at from
+    # across a room — sized accordingly. Knob travel assumes W > H and
+    # d = H - 2*PAD, so the knob lands flush at PAD from either edge.
+    W, H, PAD = 168, 84, 8
 
     def __init__(self, checked: bool = True, parent: QWidget | None = None):
         super().__init__(parent)
@@ -120,12 +123,12 @@ class ToggleSwitch(QWidget):
 
 class StatusWindow(QDialog):
     """Two views in one window: the glanceable watcher status (toggle,
-    "Watching…"/"Paused", queue line, watched folders) and, behind the
-    header cogwheel, the embedded settings form."""
+    "Watching…"/"Paused", account, watched folders) and, behind the header
+    cogwheel, the embedded settings form. Queue depth deliberately lives only
+    in the tray menu — this window answers "is it on?", nothing else."""
 
     def __init__(self, *, is_watching: Callable[[], bool],
                  set_watching: Callable[[bool], None],
-                 status_text: Callable[[], str],
                  get_config: Callable[[], dict],
                  is_revoked: Callable[[], bool],
                  get_update_version: Callable[[], str],
@@ -134,7 +137,6 @@ class StatusWindow(QDialog):
         super().__init__(None)
         self._is_watching = is_watching
         self._set_watching = set_watching
-        self._status_text = status_text
         self._get_config = get_config
         self._is_revoked = is_revoked
         self._get_update_version = get_update_version
@@ -204,13 +206,6 @@ class StatusWindow(QDialog):
         self._state.setFont(theme.font("display", 17))
         self._state.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         lay.addWidget(self._state)
-        lay.addSpacing(6)
-
-        self._queue = QLabel("", page)
-        self._queue.setObjectName("sub")
-        self._queue.setFont(theme.font("body", 9))
-        self._queue.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-        lay.addWidget(self._queue)
         lay.addStretch(1)  # push the folder footer down to the window's base
 
         rule = QFrame(page)
@@ -456,8 +451,6 @@ class StatusWindow(QDialog):
     def _refresh(self):
         watching = self._is_watching()
         self._state.setText("Watching…" if watching else "Paused")
-        self._queue.setText(self._status_text() if watching
-                            else "Saves are ignored until you turn this back on")
         self._render_account()
 
     # ---- settings view ----
