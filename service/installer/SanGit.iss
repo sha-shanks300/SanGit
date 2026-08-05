@@ -34,10 +34,18 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "..\dist\SanGit.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Desktop-shortcut artwork only. Shipped as a loose file (not embedded in the
+; exe) precisely so the shortcut can point at it without touching the exe's own
+; icon, which is what Explorer and the taskbar read.
+Source: "..\assets\AppLogo.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
+; Start Menu keeps the exe's embedded icon (assets\logoapp.ico).
 Name: "{autoprograms}\SanGit"; Filename: "{app}\SanGit.exe"
-Name: "{autodesktop}\SanGit"; Filename: "{app}\SanGit.exe"; Tasks: desktopicon
+; Desktop alone wears AppLogo. A .lnk can carry its own icon independently of
+; its target, so this changes nothing about the taskbar or the tray.
+Name: "{autodesktop}\SanGit"; Filename: "{app}\SanGit.exe"; Tasks: desktopicon; \
+    IconFilename: "{app}\AppLogo.ico"
 
 [Registry]
 ; Launch at login (per-user Run key). Removed on uninstall; only if opted in.

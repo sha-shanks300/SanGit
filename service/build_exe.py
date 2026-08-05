@@ -16,7 +16,10 @@ subprocess.run(
         "--noconsole",
         "--name", "SanGit",
         "--clean",
-        "--icon", "assets/logoapp.ico",  # branded exe + shortcut icon
+        # The exe's own icon — Explorer, the taskbar and the Start Menu
+        # shortcut. The desktop shortcut overrides this with assets/AppLogo.ico
+        # via IconFilename in installer/SanGit.iss.
+        "--icon", "assets/logoapp.ico",
         # the toast/settings/tray UI is PySide6; ship the logo asset and
         # skip the heavy Qt modules the service never imports
         "--add-data", "assets;assets",
