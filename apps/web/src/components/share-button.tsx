@@ -15,11 +15,9 @@ import { ShareManager } from "@/components/share-manager";
 export function ShareButton({
   projectId,
   versionId,
-  showHistory,
 }: {
   projectId: string;
   versionId: string | null;
-  showHistory: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -38,7 +36,6 @@ export function ShareButton({
         <ShareDialog
           projectId={projectId}
           versionId={versionId}
-          showHistory={showHistory}
           onClose={() => setOpen(false)}
         />
       )}
@@ -49,12 +46,10 @@ export function ShareButton({
 function ShareDialog({
   projectId,
   versionId,
-  showHistory,
   onClose,
 }: {
   projectId: string;
   versionId: string | null;
-  showHistory: boolean;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -104,11 +99,7 @@ function ShareDialog({
             </svg>
           </button>
         </div>
-        <ShareManager
-          projectId={projectId}
-          versionId={versionId}
-          projectShowHistory={showHistory}
-        />
+        <ShareManager projectId={projectId} versionId={versionId} />
       </div>
     </div>,
     document.body
