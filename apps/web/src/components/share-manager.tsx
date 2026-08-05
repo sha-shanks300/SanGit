@@ -3,10 +3,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { ShareLink } from "@/lib/database.types";
-import { Button, Input } from "@/components/ui";
-import { formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui";
+import { cn, formatDate } from "@/lib/utils";
 
 type Scope = "project" | "version";
+
+/** Expiry choices, shortest-lived first. `hours: null` = never expires.
+ *  The ramp below leans on this order: the longer a link lives, the lighter
+ *  its segment sits, so the risky end of the control reads as the bright end. */
+const EXPIRY_OPTIONS = [
+  { label: "1 day", hours: 24 },
+  { label: "7 days", hours: 168 },
+  { label: "30 days", hours: 720 },
+  { label: "Never", hours: null },
+] as const;
+
+/** Resting fill per segment — a deliberate step up the surface ladder. */
+const SEGMENT_REST = [
+  "bg-surface-1",
+  "bg-surface-2",
+  "bg-surface-3",
+  "bg-surface-4",
+] as const;
 
 /**
  * Owner tool: create/copy/revoke private share links. Two scopes — the whole
@@ -19,7 +37,6 @@ export function ShareManager({
   projectId,
   lockVersion = false,
   defaultExpiryHours = 168,
-  projectShowHistory,
 }: {
   /** Selected version for version-scoped ("Share version…") links. */
   versionId: string | null;
@@ -27,13 +44,14 @@ export function ShareManager({
   /** Lock to version scope — used by "Share version…". */
   lockVersion?: boolean;
   defaultExpiryHours?: number;
-  /** Current project Main/All setting, for the header note (project links). */
-  projectShowHistory?: boolean;
 }) {
   const [links, setLinks] = useState<ShareLink[]>([]);
   // No scope toggle: node links are version-scoped, the header is project-scoped.
   const scope: Scope = lockVersion ? "version" : "project";
-  const [expiresHours, setExpiresHours] = useState(String(defaultExpiryHours));
+  const [expiryIndex, setExpiryIndex] = useState(() => {
+    const i = EXPIRY_OPTIONS.findIndex((o) => o.hours === defaultExpiryHours);
+    return i >= 0 ? i : 1; // 7 days — the value this tool has always defaulted to
+  });
   const [freshUrl, setFreshUrl] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -63,14 +81,13 @@ export function ShareManager({
 
   async function create() {
     setCreating(true);
-    const hours = parseInt(expiresHours, 10);
     const res = await fetch("/api/share-links", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         scope,
         ...(scope === "project" ? { project_id: projectId } : { version_id: versionId }),
-        expires_in_hours: isNaN(hours) || hours <= 0 ? null : hours,
+        expires_in_hours: EXPIRY_OPTIONS[expiryIndex].hours,
       }),
     });
     setCreating(false);
@@ -105,29 +122,59 @@ export function ShareManager({
 
       {!lockVersion && (
         <p className="mt-1 text-caption text-ink-tertiary">
-          Recipients see{" "}
-          {projectShowHistory
-            ? "every version and the tree"
-            : "the Main track only"}{" "}
-          — set by your project&apos;s Main / All versions setting.
+          Recipients see every version and the tree.
         </p>
       )}
 
-      <div className="mt-3 flex items-center gap-2">
-        <Input
-          className="w-28"
-          type="number"
-          min={0}
-          value={expiresHours}
-          onChange={(e) => setExpiresHours(e.target.value)}
-          aria-label="Expiry in hours"
-        />
-        <span className="text-caption text-ink-tertiary">
-          hours until expiry (0 = never)
+      <div className="mt-4">
+        <span
+          id="expiry-label"
+          className="font-mono text-caption uppercase tracking-[0.28px] text-ink-tertiary"
+        >
+          Expires
         </span>
-        <Button className="ml-auto" variant="secondary" onClick={create} disabled={creating}>
-          {creating ? "Creating…" : "New link"}
-        </Button>
+        {/* Shortest-lived on the left, "Never" on the right, each segment a step
+            up the surface ladder — so a longer-lived (more exposed) link is
+            visibly the brighter choice. */}
+        <div
+          role="radiogroup"
+          aria-labelledby="expiry-label"
+          className="mt-2 flex divide-x divide-hairline border border-hairline"
+        >
+          {EXPIRY_OPTIONS.map((opt, i) => {
+            const active = i === expiryIndex;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setExpiryIndex(i)}
+                className={cn(
+                  "flex-1 px-3 py-2 text-button transition-colors",
+                  active
+                    ? "bg-ink text-canvas"
+                    : cn(
+                        SEGMENT_REST[i],
+                        "text-ink-subtle hover:bg-canvas hover:text-ink"
+                      )
+                )}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p className="text-caption text-ink-tertiary">
+            {EXPIRY_OPTIONS[expiryIndex].hours === null
+              ? "Works until you revoke it."
+              : `Stops working after ${EXPIRY_OPTIONS[expiryIndex].label}. Revoke any time.`}
+          </p>
+          <Button variant="secondary" onClick={create} disabled={creating}>
+            {creating ? "Creating…" : "New link"}
+          </Button>
+        </div>
       </div>
 
       {freshUrl && (

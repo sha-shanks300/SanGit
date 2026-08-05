@@ -58,7 +58,7 @@ export async function GET(
   if (!link.version_id) {
     const { data: project } = await admin
       .from("projects")
-      .select("id, user_id, title, artwork_url, main_version_id, show_history")
+      .select("id, user_id, title, artwork_url, main_version_id")
       .eq("id", link.project_id!)
       .maybeSingle();
     if (!project) {
@@ -99,39 +99,12 @@ export async function GET(
         : null,
     };
 
-    // Main-only: hand over just the Main version (or the latest ready one).
-    // The recipient never learns other versions or branches exist.
-    if (!project.show_history) {
-      let main: Version | null = null;
-      if (project.main_version_id) {
-        const { data } = await admin
-          .from("versions")
-          .select("*")
-          .eq("id", project.main_version_id)
-          .maybeSingle();
-        if (data?.render_status === "ready") main = data;
-      }
-      if (!main) {
-        const { data } = await admin
-          .from("versions")
-          .select("*")
-          .eq("project_id", project.id)
-          .eq("render_status", "ready")
-          .order("uploaded_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        main = data ?? null;
-      }
-      await countView();
-      return NextResponse.json({
-        scope: "project",
-        show_history: false,
-        project: projectMeta,
-        branches: [],
-        versions: main ? [strip(main)] : [],
-      });
-    }
-
+    // A project link always hands over the whole tree, whatever the project's
+    // `show_history` says. That setting curates the PUBLIC page — how much a
+    // stranger who wanders onto the profile gets to see. A private link is the
+    // opposite situation: the producer picked the recipient, and the reason to
+    // send one is usually "which of these takes is better?", which needs every
+    // version. Sending a single take is what a version-scoped link is for.
     const [{ data: branches }, { data: versions }] = await Promise.all([
       admin.from("branches").select("*").eq("project_id", project.id).returns<Branch[]>(),
       admin
@@ -146,7 +119,6 @@ export async function GET(
 
     return NextResponse.json({
       scope: "project",
-      show_history: true,
       project: projectMeta,
       branches: branches ?? [],
       versions: (versions ?? []).map(strip),
