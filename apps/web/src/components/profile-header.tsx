@@ -100,32 +100,35 @@ export function ProfileHeader({
       </div>
 
       {/* ── Mobile (< sm): stacked below a shorter banner strip ──
-          The identity sits on a light-grey panel (#565656) so it reads as a
-          distinct block against the #181818 canvas; each text line gets its own
-          near-black (canvas) box so it pops against the panel. The avatar is
+          Inverted against the desktop treatment: the panel is pitch black and
+          each text line gets its own light-grey (#565656) chip, so the identity
+          reads as chips floating on a dark slab. Pitch black rather than canvas
+          because the panel sits ON the #181818 canvas — matching it would
+          dissolve the block, leaving only the hairline to hold it. The avatar is
           absolutely positioned so it straddles the banner/panel seam (half on
-          each) without dragging the panel background up into the banner. */}
+          each) without dragging the panel background up into the banner, and its
+          ring takes the chip grey so it stays visible against the black. */}
       <div className="sm:hidden">
         <div
           className="h-32 w-full overflow-hidden border border-hairline"
           style={bannerStyle}
         />
-        <div className="relative border-x border-b border-hairline bg-[#565656] px-4 pb-4 pt-16">
-          <div className="absolute -top-12 left-4 h-24 w-24 overflow-hidden rounded-full border-2 border-canvas bg-surface-3">
+        <div className="relative border-x border-b border-hairline bg-black px-4 pb-4 pt-16">
+          <div className="absolute -top-12 left-4 h-24 w-24 overflow-hidden rounded-full border-2 border-[#565656] bg-surface-3">
             {avatar}
           </div>
 
           <div className="flex min-w-0 max-w-full flex-col items-start gap-1.5">
-            <div className="w-fit max-w-full bg-canvas px-3 py-1">
+            <div className="w-fit max-w-full bg-[#565656] px-3 py-1">
               <h1 className="truncate text-headline text-ink">{name}</h1>
             </div>
-            <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
+            <div className="w-fit max-w-full bg-[#565656] px-2.5 py-0.5">
               <p className="truncate font-mono text-body-sm text-ink/70">
                 @{profile.username}
               </p>
             </div>
             {profile.bio && (
-              <div className="w-fit max-w-full bg-canvas px-2.5 py-0.5">
+              <div className="w-fit max-w-full bg-[#565656] px-2.5 py-0.5">
                 <p className="line-clamp-2 text-body-sm text-ink/85">
                   {profile.bio}
                 </p>
