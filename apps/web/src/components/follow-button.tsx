@@ -15,14 +15,9 @@ import { cn } from "@/lib/utils";
 export function FollowButton({
   profileId,
   username,
-  accent = false,
 }: {
   profileId: string;
   username: string;
-  /** Rosso Corsa treatment: a filled red "Follow" (outlined once following).
-   *  Used on the mobile profile panel; the desktop overlay keeps the plain
-   *  secondary button. */
-  accent?: boolean;
 }) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -78,10 +73,10 @@ export function FollowButton({
       aria-pressed={following}
       title={following ? "Unfollow" : "Follow"}
       className={cn(
-        accent && !following ? buttonClasses("primary") : buttonClasses("secondary"),
-        // Following reads in Rosso Corsa — the same red the un-followed accent
-        // button is filled with, so the state change is a colour swap rather
-        // than a fade to grey.
+        // Filled Rosso to follow; outlined once following, with the label in
+        // that same red — so the state change is a colour swap rather than a
+        // fade to grey. Identical on desktop and mobile.
+        following ? buttonClasses("secondary") : buttonClasses("primary"),
         following && "text-primary",
         !ready && "opacity-0"
       )}

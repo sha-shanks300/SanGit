@@ -46,9 +46,9 @@ export function ProfileHeader({
     </span>
   );
 
-  // `accent` gives the mobile panel's Follow the Rosso Corsa treatment; the
-  // desktop overlay passes nothing and keeps the plain secondary button.
-  const renderActions = (accent = false) =>
+  // One action cluster for both layouts — only its container differs (frosted
+  // tray on desktop, plain row on the mobile panel).
+  const renderActions = () =>
     isOwner ? (
       <>
         <ShareProfileButton username={profile.username} />
@@ -58,11 +58,7 @@ export function ProfileHeader({
       </>
     ) : (
       // Non-owner (incl. signed-out): private follow toggle.
-      <FollowButton
-        profileId={profile.id}
-        username={profile.username}
-        accent={accent}
-      />
+      <FollowButton profileId={profile.id} username={profile.username} />
     );
 
   return (
@@ -137,7 +133,7 @@ export function ProfileHeader({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {renderActions(true)}
+            {renderActions()}
           </div>
         </div>
       </div>
