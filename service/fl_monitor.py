@@ -27,6 +27,13 @@ class FLMonitor:
         self._was_running = False
         self._thread = threading.Thread(target=self._run, daemon=True)
 
+    def update_process_names(self, names: list[str]):
+        """Adopt hot-applied settings. Re-baselines against the new names so a
+        process that was 'running' under the old list can't read as a close on
+        the next poll."""
+        self._names = names
+        self._was_running = fl_running(self._names)
+
     def start(self):
         self._was_running = fl_running(self._names)  # baseline: don't fire on startup
         self._thread.start()
