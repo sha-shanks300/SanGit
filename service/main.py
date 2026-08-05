@@ -343,6 +343,13 @@ class App(QObject):
                                      debounce_secs=cfg["debounce_secs"])
         if was_started:
             self.watcher.start()  # otherwise run() starts it
+        # The long-lived workers hold their own reference to the config dict,
+        # and config.load() hands back a fresh object — so rebinding self.cfg
+        # above leaves them on the old one. Hand it over explicitly, or an
+        # edited FL executable path saves and then silently does nothing until
+        # the next restart.
+        self.renderer.update_config(cfg)
+        self.fl_monitor.update_process_names(cfg["fl_process_names"])
         store.requeue_errored_commits()
         self._auth_alerted = False
         self._revoked = False  # reconnected — leave the revoked state

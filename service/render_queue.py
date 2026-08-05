@@ -67,6 +67,17 @@ class RenderWorker:
             except Exception:
                 log.exception("on_render_settled callback failed")
 
+    def update_config(self, cfg: dict):
+        """Adopt hot-applied settings (Settings… → Save). The worker re-reads
+        `self._cfg` on every loop pass, so re-pointing it is enough — no thread
+        restart, and a render already in flight finishes on the old values.
+
+        Without this the worker keeps the dict it was constructed with, since
+        config.load() returns a fresh object each call: editing the FL
+        executable path would appear to save and then silently do nothing until
+        the app was restarted."""
+        self._cfg = cfg
+
     def start(self):
         self._thread.start()
 
