@@ -157,10 +157,12 @@ export function ProjectSettings({
               {isPublic ? "Public" : "Private"}
             </button>
           </div>
-          {/* Depth of any shared view — public page (when public) AND private
-              share links both honor this one setting. */}
+          {/* Depth of the PUBLIC page only. Private share links deliberately
+              ignore this and always show the whole tree: this setting curates
+              what a stranger on your profile sees, while a share link goes to
+              someone you picked. */}
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-body-sm text-ink">Shared view</span>
+            <span className="text-body-sm text-ink">Public page shows</span>
             <button
               type="button"
               aria-pressed={showHistory}
@@ -176,13 +178,16 @@ export function ProjectSettings({
             </button>
           </div>
           <p className="mt-2 text-caption text-ink-tertiary">
-            Applies to {isPublic ? `your public page (/p/${project.slug}) and ` : ""}
-            private share links.{" "}
+            {isPublic
+              ? `Visitors to /p/${project.slug} `
+              : "Once public, visitors "}
             {showHistory
-              ? "They see every version and the tree."
-              : "They hear the Main track only."}
-            {!project.main_version_id &&
-              " No Main set, so they hear your latest version until you pick one."}
+              ? "see every version and the tree."
+              : "hear the Main track only."}
+            {!showHistory &&
+              !project.main_version_id &&
+              " No Main set, so they hear your latest version until you pick one."}{" "}
+            Private share links always show every version.
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="tertiary" onClick={() => setOpen(false)}>
